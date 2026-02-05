@@ -11,11 +11,14 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { ScrollArea } from "@/components/ui/scroll-area"
 
+import { calculateEffectiveSectorExposure, isKnownETF, getETFData } from "@/lib/etf-data"
+
 interface Holding {
   id: string
   ticker: string
   allocation_percent: number | null
   sector: string | null
+  holding_type?: string
 }
 
 interface PortfolioChatProps {
@@ -35,10 +38,31 @@ export function PortfolioChat({ holdings }: PortfolioChatProps) {
     e.preventDefault()
     if (!input.trim() || isLoading) return
 
-    // Include portfolio context in the message
-    const portfolioContext = holdings.length > 0
-      ? `[Portfolio Context: ${holdings.map(h => `${h.ticker} (${h.allocation_percent}% in ${h.sector})`).join(", ")}]`
-      : "[No holdings in portfolio]"
+    // Include portfolio context with ETF look-through
+    let portfolioContext = "[No holdings in portfolio]"
+    if (holdings.length > 0) {
+      const holdingsList = holdings.map(h => {
+        const type = h.holding_type || (isKnownETF(h.ticker) ? "etf" : "stock")
+        const etf = type === "etf" ? getETFData(h.ticker) : null
+        const etfDetail = etf ? ` (${etf.name}, sectors: ${Object.entries(etf.sectors).slice(0, 3).map(([s, p]) => `${s} ${p}%`).join(", ")})` : ""
+        return `${h.ticker} ${type.toUpperCase()} ${h.allocation_percent}%${h.sector ? ` in ${h.sector}` : ""}${etfDetail}`
+      }).join("; ")
+
+      const effectiveExposure = calculateEffectiveSectorExposure(
+        holdings.filter(h => h.allocation_percent).map(h => ({
+          ticker: h.ticker,
+          allocation_percent: h.allocation_percent || 0,
+          holding_type: h.holding_type || (isKnownETF(h.ticker) ? "etf" : "stock"),
+          sector: h.sector,
+        }))
+      )
+      const sectorSummary = Object.entries(effectiveExposure)
+        .sort(([, a], [, b]) => b - a)
+        .map(([s, p]) => `${s}: ${p.toFixed(1)}%`)
+        .join(", ")
+
+      portfolioContext = `[Portfolio: ${holdingsList}. Effective sector exposure (including ETF look-through): ${sectorSummary}]`
+    }
 
     sendMessage({ text: `${portfolioContext}\n\nUser question: ${input}` })
     setInput("")

@@ -1,13 +1,16 @@
 "use client"
 
+import { useMemo } from "react"
 import { Layers, Shield, Target, AlertCircle, CheckCircle2, Info } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { calculateEffectiveSectorExposure, isKnownETF } from "@/lib/etf-data"
 
 interface Holding {
   id: string
   ticker: string
   allocation_percent: number | null
   sector: string | null
+  holding_type?: string
 }
 
 interface Insight {
@@ -19,19 +22,26 @@ interface Insight {
 
 export function AIInsightsPanel({ holdings }: { holdings: Holding[] }) {
   const totalAllocation = holdings.reduce((sum, h) => sum + (h.allocation_percent || 0), 0)
-  const sectors = holdings.reduce(
-    (acc, h) => {
-      const sector = h.sector || "Other"
-      acc[sector] = (acc[sector] || 0) + (h.allocation_percent || 0)
-      return acc
-    },
-    {} as Record<string, number>
-  )
+  const etfCount = holdings.filter((h) => h.holding_type === "etf" || isKnownETF(h.ticker)).length
 
-  const sectorCount = Object.keys(sectors).length
-  const maxSectorAllocation = Math.max(...Object.values(sectors), 0)
+  // Use effective sector exposure (looks through ETFs)
+  const effectiveExposure = useMemo(() => {
+    const holdingsForCalc = holdings
+      .filter((h) => h.allocation_percent && h.allocation_percent > 0)
+      .map((h) => ({
+        ticker: h.ticker,
+        allocation_percent: h.allocation_percent || 0,
+        holding_type: h.holding_type || (isKnownETF(h.ticker) ? "etf" : "stock"),
+        sector: h.sector,
+      }))
+    return calculateEffectiveSectorExposure(holdingsForCalc)
+  }, [holdings])
+
+  const sortedSectors = Object.entries(effectiveExposure).sort((a, b) => b[1] - a[1])
+  const sectorCount = sortedSectors.length
+  const maxSectorAllocation = sortedSectors[0]?.[1] || 0
+  const dominantSector = sortedSectors[0]
   const maxHoldingAllocation = Math.max(...holdings.map((h) => h.allocation_percent || 0), 0)
-  const dominantSector = Object.entries(sectors).sort((a, b) => b[1] - a[1])[0]
 
   const insights: Insight[] = []
 
@@ -41,28 +51,47 @@ export function AIInsightsPanel({ holdings }: { holdings: Holding[] }) {
       category: "exposure",
       title: "No Holdings",
       status: "info",
-      description: "Add holdings to see exposure analysis"
+      description: "Add stocks or ETFs to see exposure analysis",
     })
   } else if (sectorCount === 1) {
     insights.push({
       category: "exposure",
       title: "Single Sector",
       status: "warning",
-      description: `100% in ${dominantSector?.[0]}. Consider diversifying.`
+      description: `100% effective exposure in ${dominantSector?.[0]}. Consider diversifying.`,
+    })
+  } else if (sectorCount >= 5) {
+    insights.push({
+      category: "exposure",
+      title: "Well Diversified",
+      status: "good",
+      description: `Effective exposure across ${sectorCount} sectors${etfCount > 0 ? ` (including ${etfCount} ETF look-through)` : ""}`,
     })
   } else if (sectorCount >= 3) {
     insights.push({
       category: "exposure",
       title: "Multi-Sector",
       status: "good",
-      description: `Spread across ${sectorCount} sectors`
+      description: `Spread across ${sectorCount} sectors${etfCount > 0 ? " via ETF look-through" : ""}`,
     })
   } else {
     insights.push({
       category: "exposure",
       title: "Limited Sectors",
       status: "info",
-      description: `${sectorCount} sectors. Room to diversify.`
+      description: `${sectorCount} sectors. Adding broad ETFs like SPY or VTI could help diversify.`,
+    })
+  }
+
+  // ETF overlap detection
+  if (etfCount >= 2) {
+    const etfHoldings = holdings.filter((h) => h.holding_type === "etf" || isKnownETF(h.ticker))
+    const etfTickers = etfHoldings.map((h) => h.ticker).join(", ")
+    insights.push({
+      category: "exposure",
+      title: "ETF Overlap Check",
+      status: "info",
+      description: `You hold ${etfCount} ETFs (${etfTickers}). Check if they overlap in sector exposure.`,
     })
   }
 
@@ -71,33 +100,44 @@ export function AIInsightsPanel({ holdings }: { holdings: Holding[] }) {
     if (maxSectorAllocation > 50) {
       insights.push({
         category: "risk",
-        title: "Sector Heavy",
+        title: "Sector Concentrated",
         status: "warning",
-        description: `${dominantSector?.[0]} is ${maxSectorAllocation.toFixed(0)}% of portfolio`
+        description: `${dominantSector?.[0]} is ${maxSectorAllocation.toFixed(1)}% effective exposure`,
       })
     } else if (maxSectorAllocation <= 35 && sectorCount >= 3) {
       insights.push({
         category: "risk",
         title: "Balanced Risk",
         status: "good",
-        description: "No single sector dominates"
+        description: "No single sector dominates your effective exposure",
       })
     } else {
       insights.push({
         category: "risk",
         title: "Moderate Risk",
         status: "info",
-        description: "Consider sector balance"
+        description: `Top sector (${dominantSector?.[0]}) at ${maxSectorAllocation.toFixed(1)}%`,
       })
     }
 
-    // Macro sensitivity
-    if (sectors["Technology"] && sectors["Technology"] > 30) {
+    // Macro sensitivity based on effective exposure
+    const techExposure = effectiveExposure["Technology"] || 0
+    if (techExposure > 30) {
       insights.push({
         category: "risk",
         title: "Rate Sensitive",
         status: "info",
-        description: "Tech-heavy = rate sensitivity"
+        description: `${techExposure.toFixed(1)}% tech exposure = sensitive to rate changes`,
+      })
+    }
+
+    const energyExposure = effectiveExposure["Energy"] || 0
+    if (energyExposure > 15) {
+      insights.push({
+        category: "risk",
+        title: "Oil Price Exposure",
+        status: "info",
+        description: `${energyExposure.toFixed(1)}% energy exposure = sensitive to oil prices`,
       })
     }
   }
@@ -106,48 +146,38 @@ export function AIInsightsPanel({ holdings }: { holdings: Holding[] }) {
   if (holdings.length > 0) {
     if (maxHoldingAllocation > 30) {
       const topHolding = holdings.find((h) => h.allocation_percent === maxHoldingAllocation)
+      const topType = topHolding?.holding_type === "etf" || isKnownETF(topHolding?.ticker || "") ? "ETF" : "stock"
       insights.push({
         category: "concentration",
         title: "Top Heavy",
         status: "warning",
-        description: `${topHolding?.ticker} is ${maxHoldingAllocation.toFixed(0)}%`
+        description: `${topHolding?.ticker} (${topType}) is ${maxHoldingAllocation.toFixed(0)}% of portfolio`,
       })
     } else if (holdings.length >= 5 && maxHoldingAllocation <= 25) {
       insights.push({
         category: "concentration",
         title: "Well Spread",
         status: "good",
-        description: `${holdings.length} holdings, none over 25%`
+        description: `${holdings.length} holdings, none over 25%`,
       })
-    } else if (holdings.length < 5) {
+    } else if (holdings.length < 3) {
       insights.push({
         category: "concentration",
         title: "Few Holdings",
         status: "info",
-        description: `Only ${holdings.length} position${holdings.length === 1 ? "" : "s"}`
+        description: `Only ${holdings.length} position${holdings.length === 1 ? "" : "s"}. Consider adding more.`,
       })
-    }
-  }
-
-  const getCategoryIcon = (category: Insight["category"]) => {
-    switch (category) {
-      case "exposure":
-        return Layers
-      case "risk":
-        return Shield
-      case "concentration":
-        return Target
     }
   }
 
   const getStatusIcon = (status: Insight["status"]) => {
     switch (status) {
       case "good":
-        return <CheckCircle2 className="h-3.5 w-3.5 text-chart-3" />
+        return <CheckCircle2 className="h-3.5 w-3.5 text-chart-3 flex-shrink-0" />
       case "warning":
-        return <AlertCircle className="h-3.5 w-3.5 text-chart-4" />
+        return <AlertCircle className="h-3.5 w-3.5 text-chart-4 flex-shrink-0" />
       case "info":
-        return <Info className="h-3.5 w-3.5 text-chart-1" />
+        return <Info className="h-3.5 w-3.5 text-chart-1 flex-shrink-0" />
     }
   }
 
@@ -165,13 +195,13 @@ export function AIInsightsPanel({ holdings }: { holdings: Holding[] }) {
   const groupedInsights = {
     exposure: insights.filter((i) => i.category === "exposure"),
     risk: insights.filter((i) => i.category === "risk"),
-    concentration: insights.filter((i) => i.category === "concentration")
+    concentration: insights.filter((i) => i.category === "concentration"),
   }
 
   const categories = [
     { key: "exposure" as const, label: "Exposure", icon: Layers },
     { key: "risk" as const, label: "Risk", icon: Shield },
-    { key: "concentration" as const, label: "Concentration", icon: Target }
+    { key: "concentration" as const, label: "Concentration", icon: Target },
   ]
 
   return (
@@ -179,7 +209,7 @@ export function AIInsightsPanel({ holdings }: { holdings: Holding[] }) {
       <CardHeader className="pb-3">
         <CardTitle className="text-base">AI Observations</CardTitle>
         <p className="text-xs text-muted-foreground">
-          Real-time analysis of your portfolio
+          Real-time analysis with ETF look-through
         </p>
       </CardHeader>
       <CardContent className="space-y-4">
