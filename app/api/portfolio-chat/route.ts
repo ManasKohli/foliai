@@ -1,13 +1,54 @@
 import { consumeStream, convertToModelMessages, streamText, UIMessage } from "ai"
+import { xai } from "@ai-sdk/xai"
+import { createClient } from "@/lib/supabase/server"
 
-export const maxDuration = 30
+export const maxDuration = 60
 
 export async function POST(req: Request) {
-  const { messages }: { messages: UIMessage[] } = await req.json()
+  const { messages, portfolioContext }: { messages: UIMessage[]; portfolioContext?: string } = await req.json()
+
+  // Auth check
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+
+  if (!user) {
+    return new Response(JSON.stringify({ error: "Unauthorized" }), {
+      status: 401,
+      headers: { "Content-Type": "application/json" },
+    })
+  }
+
+  // Check and deduct credits
+  const { data: credits } = await supabase
+    .from("user_credits")
+    .select("*")
+    .eq("user_id", user.id)
+    .single()
+
+  const isUnlimited = credits?.plan === "unlimited" || credits?.credits_total === -1
+
+  if (!isUnlimited) {
+    const remaining = credits?.credits_remaining ?? 0
+    if (remaining <= 0) {
+      return new Response(
+        JSON.stringify({ error: "NO_CREDITS" }),
+        { status: 403, headers: { "Content-Type": "application/json" } }
+      )
+    }
+
+    // Deduct one credit
+    await supabase
+      .from("user_credits")
+      .update({
+        credits_remaining: remaining - 1,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("user_id", user.id)
+  }
 
   const result = streamText({
-    model: "openai/gpt-4o-mini",
-    system: `You are Folio AI, a helpful portfolio analysis assistant. Your role is to explain portfolio concepts in plain, accessible language.
+    model: xai("grok-4"),
+    system: `You are Folio AI, a helpful portfolio analysis assistant powered by Grok. Your role is to explain portfolio concepts in plain, accessible language.
 
 IMPORTANT GUIDELINES:
 - You provide educational explanations only, NOT financial advice
@@ -20,19 +61,14 @@ IMPORTANT GUIDELINES:
 - Never recommend specific buy/sell actions
 
 SPECIAL: ETF LOOK-THROUGH ANALYSIS
-- When a user holds ETFs (like SPY, QQQ, VOO, VTI), you understand that ETFs represent baskets of stocks across multiple sectors
+- When a user holds ETFs (like SPY, QQQ, VOO, VTI, XIU.TO, XIC.TO), you understand that ETFs represent baskets of stocks across multiple sectors
 - Use the "effective sector exposure" data provided in the context to explain the user's TRUE sector allocation
-- For example, if someone holds 50% SPY and 50% QQQ, explain how this creates overlap in tech exposure
 - Highlight ETF overlap risks - e.g., SPY and VOO are nearly identical
-- Explain how ETFs provide instant diversification vs individual stocks
-- When discussing sector concentration, always use the effective (look-through) numbers, not just the raw holdings
+- For Canadian (TSX) holdings, note any CAD/USD currency considerations
+- When discussing sector concentration, always use the effective (look-through) numbers
 
-When analyzing portfolios, consider:
-- Sector concentration and diversification (using effective sector exposure)
-- ETF overlap and redundancy
-- Single-stock vs ETF balance
-- Market sensitivity based on effective exposure
-- The difference between "I own 2 things" vs "I'm exposed to hundreds of stocks through ETFs"`,
+USER PORTFOLIO CONTEXT:
+${portfolioContext || "No portfolio data available yet. The user hasn't added any holdings."}`,
     messages: await convertToModelMessages(messages),
     abortSignal: req.signal,
   })

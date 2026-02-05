@@ -2,7 +2,7 @@
 
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { PieChart, User, LogOut } from "lucide-react"
+import { PieChart, User, LogOut, CreditCard, Sparkles } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
   DropdownMenu,
@@ -27,12 +27,28 @@ export function DashboardNav({ user }: { user: SupabaseUser }) {
   return (
     <header className="border-b border-border/40 bg-background/80 backdrop-blur-sm sticky top-0 z-50">
       <div className="container mx-auto px-4 py-4 flex items-center justify-between">
-        <Link href="/dashboard" className="flex items-center gap-2">
-          <div className="h-8 w-8 rounded-lg bg-primary flex items-center justify-center">
-            <PieChart className="h-5 w-5 text-primary-foreground" />
-          </div>
-          <span className="text-xl font-semibold text-foreground">Folio AI</span>
-        </Link>
+        <div className="flex items-center gap-6">
+          <Link href="/dashboard" className="flex items-center gap-2">
+            <div className="h-8 w-8 rounded-lg bg-primary flex items-center justify-center">
+              <PieChart className="h-5 w-5 text-primary-foreground" />
+            </div>
+            <span className="text-xl font-semibold text-foreground">Folio AI</span>
+          </Link>
+          <nav className="hidden md:flex items-center gap-1">
+            <Button variant="ghost" size="sm" asChild className="text-muted-foreground hover:text-foreground">
+              <Link href="/dashboard">Dashboard</Link>
+            </Button>
+            <Button variant="ghost" size="sm" asChild className="text-muted-foreground hover:text-foreground">
+              <Link href="/dashboard/billing">Billing</Link>
+            </Button>
+            <Button variant="ghost" size="sm" asChild className="text-muted-foreground hover:text-foreground group">
+              <Link href="/pricing" className="flex items-center gap-1.5">
+                <Sparkles className="h-3.5 w-3.5 text-primary group-hover:scale-110 transition-transform" />
+                Upgrade
+              </Link>
+            </Button>
+          </nav>
+        </div>
 
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
@@ -47,9 +63,28 @@ export function DashboardNav({ user }: { user: SupabaseUser }) {
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-56">
             <DropdownMenuItem asChild>
+              <Link href="/dashboard" className="flex items-center gap-2">
+                <PieChart className="h-4 w-4" />
+                Dashboard
+              </Link>
+            </DropdownMenuItem>
+            <DropdownMenuItem asChild>
+              <Link href="/dashboard/billing" className="flex items-center gap-2">
+                <CreditCard className="h-4 w-4" />
+                Billing & Credits
+              </Link>
+            </DropdownMenuItem>
+            <DropdownMenuItem asChild>
               <Link href="/dashboard/account" className="flex items-center gap-2">
                 <User className="h-4 w-4" />
                 Account Settings
+              </Link>
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem asChild>
+              <Link href="/pricing" className="flex items-center gap-2 text-primary">
+                <Sparkles className="h-4 w-4" />
+                Upgrade Plan
               </Link>
             </DropdownMenuItem>
             <DropdownMenuSeparator />

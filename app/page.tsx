@@ -22,6 +22,9 @@ export default function LandingPage() {
             <Link href="#how-it-works" className="text-muted-foreground hover:text-foreground transition-colors">
               How It Works
             </Link>
+            <Link href="/pricing" className="text-muted-foreground hover:text-foreground transition-colors">
+              Pricing
+            </Link>
           </nav>
           <div className="flex items-center gap-3">
             <Button variant="ghost" asChild>
@@ -60,7 +63,7 @@ export default function LandingPage() {
                 </Link>
               </Button>
               <Button size="lg" variant="outline" asChild className="w-full sm:w-auto bg-transparent">
-                <Link href="#how-it-works">See How It Works</Link>
+                <Link href="/pricing">View Pricing</Link>
               </Button>
             </div>
           </div>
