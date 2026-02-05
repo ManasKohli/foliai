@@ -54,11 +54,11 @@ export function PortfolioSummary({ holdings }: { holdings: Holding[] }) {
   }
 
   return (
-    <Card className="bg-gradient-to-br from-primary/10 via-background to-background border-primary/20">
+    <Card className="bg-gradient-to-br from-primary/10 via-background to-background border-primary/20 transition-all duration-300 hover:shadow-lg hover:shadow-primary/5 hover:border-primary/30">
       <CardContent className="pt-6">
-        <div className="flex items-start gap-4">
-          <div className="p-3 rounded-xl bg-primary/10">
-            <Sparkles className="h-6 w-6 text-primary" />
+        <div className="flex items-start gap-4 group">
+          <div className="p-3 rounded-xl bg-primary/10 transition-transform duration-300 group-hover:scale-110">
+            <Sparkles className="h-6 w-6 text-primary animate-pulse" />
           </div>
           <div className="flex-1 space-y-3">
             <div className="flex items-center justify-between">

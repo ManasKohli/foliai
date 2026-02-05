@@ -87,7 +87,7 @@ export function MarketNews({ holdings }: { holdings: Holding[] }) {
   }
 
   return (
-    <Card>
+    <Card className="transition-all duration-300 hover:shadow-md hover:shadow-primary/5">
       <CardHeader className="pb-3">
         <CardTitle className="text-base flex items-center gap-2">
           <Newspaper className="h-4 w-4 text-primary" />
@@ -96,7 +96,7 @@ export function MarketNews({ holdings }: { holdings: Holding[] }) {
       </CardHeader>
       <CardContent className="space-y-4">
         {newsItems.slice(0, 4).map((item, index) => (
-          <div key={index} className="group">
+          <div key={index} className="group p-3 rounded-lg transition-all duration-200 hover:bg-muted/30 -mx-3">
             <div className="flex items-start justify-between gap-2">
               <h4 className="text-sm font-medium text-foreground group-hover:text-primary transition-colors cursor-pointer flex items-center gap-1">
                 {item.headline}
@@ -107,7 +107,7 @@ export function MarketNews({ holdings }: { holdings: Holding[] }) {
               <span className="text-xs text-muted-foreground">{item.source}</span>
               <span className="text-xs text-muted-foreground/50">•</span>
               <span className="text-xs text-muted-foreground">{item.timeAgo}</span>
-              <Badge variant="outline" className="text-xs px-1.5 py-0 h-5">
+              <Badge variant="outline" className="text-xs px-1.5 py-0 h-5 transition-colors duration-200 group-hover:bg-primary/10 group-hover:border-primary/30">
                 {item.relevantSector}
               </Badge>
             </div>

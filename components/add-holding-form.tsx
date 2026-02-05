@@ -83,10 +83,10 @@ export function AddHoldingForm({ portfolioId, userId }: AddHoldingFormProps) {
   }
 
   return (
-    <Card>
+    <Card className="transition-all duration-300 hover:shadow-md hover:shadow-primary/5">
       <CardHeader>
         <CardTitle className="text-lg flex items-center gap-2">
-          <Plus className="h-5 w-5" />
+          <Plus className="h-5 w-5 transition-transform duration-300 group-hover:rotate-90" />
           Add Holding
         </CardTitle>
       </CardHeader>

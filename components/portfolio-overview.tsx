@@ -62,7 +62,7 @@ export function PortfolioOverview({ holdings }: { holdings: Holding[] }) {
 
   return (
     <div className="grid md:grid-cols-2 gap-6">
-      <Card>
+      <Card className="transition-all duration-300 hover:shadow-md hover:shadow-primary/5 group">
         <CardHeader>
           <CardTitle className="text-lg">Holdings Allocation</CardTitle>
         </CardHeader>
@@ -103,7 +103,7 @@ export function PortfolioOverview({ holdings }: { holdings: Holding[] }) {
         </CardContent>
       </Card>
 
-      <Card>
+      <Card className="transition-all duration-300 hover:shadow-md hover:shadow-primary/5 group">
         <CardHeader>
           <CardTitle className="text-lg">Sector Breakdown</CardTitle>
         </CardHeader>

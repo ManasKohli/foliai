@@ -175,7 +175,7 @@ export function AIInsightsPanel({ holdings }: { holdings: Holding[] }) {
   ]
 
   return (
-    <Card>
+    <Card className="transition-all duration-300 hover:shadow-md hover:shadow-primary/5">
       <CardHeader className="pb-3">
         <CardTitle className="text-base">AI Observations</CardTitle>
         <p className="text-xs text-muted-foreground">
@@ -201,7 +201,7 @@ export function AIInsightsPanel({ holdings }: { holdings: Holding[] }) {
                 {categoryInsights.map((insight, index) => (
                   <div
                     key={index}
-                    className="flex items-start gap-2 p-2 rounded-md bg-muted/30"
+                    className="flex items-start gap-2 p-2 rounded-md bg-muted/30 transition-all duration-200 hover:bg-muted/50 hover:translate-x-1"
                   >
                     {getStatusIcon(insight.status)}
                     <div className="flex-1 min-w-0">

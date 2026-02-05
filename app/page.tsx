@@ -9,8 +9,8 @@ export default function LandingPage() {
       {/* Header */}
       <header className="border-b border-border/40 backdrop-blur-sm sticky top-0 z-50 bg-background/80">
         <div className="container mx-auto px-4 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="h-8 w-8 rounded-lg bg-primary flex items-center justify-center">
+          <div className="flex items-center gap-2 group cursor-pointer">
+            <div className="h-8 w-8 rounded-lg bg-primary flex items-center justify-center group-hover:scale-110 transition-transform duration-200">
               <PieChart className="h-5 w-5 text-primary-foreground" />
             </div>
             <span className="text-xl font-semibold text-foreground">Folio AI</span>
@@ -53,10 +53,10 @@ export default function LandingPage() {
               Visualize holdings, analyze sector allocation, and get AI-driven insights to make smarter investment decisions. Educational tool for informed investors.
             </p>
             <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-              <Button size="lg" asChild className="w-full sm:w-auto">
+              <Button size="lg" asChild className="w-full sm:w-auto group">
                 <Link href="/auth/sign-up">
                   Start Analyzing Free
-                  <ArrowRight className="ml-2 h-5 w-5" />
+                  <ArrowRight className="ml-2 h-5 w-5 group-hover:translate-x-1 transition-transform duration-200" />
                 </Link>
               </Button>
               <Button size="lg" variant="outline" asChild className="w-full sm:w-auto bg-transparent">
@@ -186,8 +186,8 @@ export default function LandingPage() {
 
 function FeatureCard({ icon, title, description }: { icon: React.ReactNode; title: string; description: string }) {
   return (
-    <div className="p-6 rounded-xl bg-card border border-border/60 hover:border-primary/40 transition-colors">
-      <div className="h-12 w-12 rounded-lg bg-primary/10 flex items-center justify-center text-primary mb-4">
+    <div className="group p-6 rounded-xl bg-card border border-border/60 hover:border-primary/40 hover:shadow-lg hover:shadow-primary/5 hover:-translate-y-1 transition-all duration-300">
+      <div className="h-12 w-12 rounded-lg bg-primary/10 flex items-center justify-center text-primary mb-4 group-hover:scale-110 group-hover:bg-primary/20 transition-all duration-300">
         {icon}
       </div>
       <h3 className="text-lg font-semibold text-foreground mb-2">{title}</h3>
@@ -198,8 +198,8 @@ function FeatureCard({ icon, title, description }: { icon: React.ReactNode; titl
 
 function StepCard({ number, title, description }: { number: string; title: string; description: string }) {
   return (
-    <div className="text-center">
-      <div className="h-14 w-14 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-xl font-bold mx-auto mb-4">
+    <div className="group text-center">
+      <div className="h-14 w-14 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-xl font-bold mx-auto mb-4 group-hover:scale-110 group-hover:shadow-lg group-hover:shadow-primary/30 transition-all duration-300">
         {number}
       </div>
       <h3 className="text-xl font-semibold text-foreground mb-2">{title}</h3>

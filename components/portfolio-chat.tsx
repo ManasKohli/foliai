@@ -52,7 +52,7 @@ export function PortfolioChat({ holdings }: PortfolioChatProps) {
   ]
 
   return (
-    <Card className="flex flex-col h-[400px]">
+    <Card className="flex flex-col h-[400px] transition-all duration-300 hover:shadow-lg hover:shadow-primary/5">
       <CardHeader className="pb-3 flex-shrink-0">
         <CardTitle className="text-base flex items-center gap-2">
           <MessageCircle className="h-4 w-4 text-primary" />
@@ -75,7 +75,7 @@ export function PortfolioChat({ holdings }: PortfolioChatProps) {
                     type="button"
                     key={i}
                     onClick={() => setInput(q)}
-                    className="text-xs px-3 py-1.5 rounded-full bg-muted/50 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                    className="text-xs px-3 py-1.5 rounded-full bg-muted/50 text-muted-foreground hover:bg-primary/10 hover:text-primary hover:scale-105 transition-all duration-200"
                   >
                     {q}
                   </button>
@@ -90,7 +90,7 @@ export function PortfolioChat({ holdings }: PortfolioChatProps) {
                   className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}
                 >
                   <div
-                    className={`max-w-[85%] rounded-lg px-3 py-2 text-sm ${
+                    className={`max-w-[85%] rounded-lg px-3 py-2 text-sm transition-all duration-200 hover:shadow-sm ${
                       message.role === "user"
                         ? "bg-primary text-primary-foreground"
                         : "bg-muted/50 text-foreground"

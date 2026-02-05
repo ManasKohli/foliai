@@ -64,17 +64,20 @@ export function PortfolioMovement({ holdings }: { holdings: Holding[] }) {
   ]
 
   return (
-    <Card>
+    <Card className="transition-all duration-300 hover:shadow-md hover:shadow-primary/5">
       <CardHeader className="pb-3">
         <CardTitle className="text-base flex items-center gap-2">
           <Activity className="h-4 w-4 text-primary" />
           Why did my portfolio move?
         </CardTitle>
       </CardHeader>
-      <CardContent className="space-y-4">
+      <CardContent className="space-y-2">
         {movements.map((item, index) => (
-          <div key={index} className="flex gap-3">
-            <div className={`p-2 rounded-lg bg-muted/50 h-fit ${item.color}`}>
+          <div 
+            key={index} 
+            className="flex gap-3 p-3 rounded-lg transition-all duration-300 hover:bg-muted/30 hover:translate-x-1 cursor-default"
+          >
+            <div className={`p-2 rounded-lg bg-muted/50 h-fit ${item.color} transition-transform duration-300 group-hover:scale-110`}>
               <item.icon className="h-4 w-4" />
             </div>
             <div>

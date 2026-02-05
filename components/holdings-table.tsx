@@ -51,14 +51,14 @@ export function HoldingsTable({ holdings }: { holdings: Holding[] }) {
   }
 
   return (
-    <Card>
+    <Card className="transition-all duration-300 hover:shadow-md hover:shadow-primary/5">
       <CardHeader>
         <CardTitle>Your Holdings</CardTitle>
       </CardHeader>
       <CardContent>
         <Table>
           <TableHeader>
-            <TableRow>
+            <TableRow className="hover:bg-transparent">
               <TableHead>Ticker</TableHead>
               <TableHead>Quantity</TableHead>
               <TableHead>Allocation</TableHead>
@@ -68,7 +68,7 @@ export function HoldingsTable({ holdings }: { holdings: Holding[] }) {
           </TableHeader>
           <TableBody>
             {holdings.map((holding) => (
-              <TableRow key={holding.id}>
+              <TableRow key={holding.id} className="transition-colors duration-200 hover:bg-muted/50">
                 <TableCell className="font-medium">{holding.ticker}</TableCell>
                 <TableCell>{holding.quantity ?? "-"}</TableCell>
                 <TableCell>{holding.allocation_percent ? `${holding.allocation_percent}%` : "-"}</TableCell>
@@ -79,7 +79,7 @@ export function HoldingsTable({ holdings }: { holdings: Holding[] }) {
                     size="icon"
                     onClick={() => handleDelete(holding.id)}
                     disabled={deletingId === holding.id}
-                    className="text-muted-foreground hover:text-destructive"
+                    className="text-muted-foreground hover:text-destructive hover:scale-110 transition-all duration-200"
                   >
                     <Trash2 className="h-4 w-4" />
                     <span className="sr-only">Delete holding</span>
