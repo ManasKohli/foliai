@@ -3,61 +3,16 @@
 import React from "react"
 import { useState, useMemo, useRef, useEffect } from "react"
 import { useRouter } from "next/navigation"
-import { Plus, Loader2, Search, TrendingUp, Building2, Check } from "lucide-react"
+import { Plus, Loader2, Search, TrendingUp, Building2, Check, Globe } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
 import { createClient } from "@/lib/supabase/client"
-import { ETF_DATA, STOCK_SECTORS, isKnownETF, getStockSector, type ETFSectorBreakdown } from "@/lib/etf-data"
+import { ETF_DATA, isKnownETF, getStockSector, getETFData, getAllTickers, type ETFSectorBreakdown } from "@/lib/etf-data"
 
-// Build a unified ticker list from our data
-const ALL_TICKERS = [
-  ...Object.entries(ETF_DATA).map(([ticker, data]) => ({
-    ticker,
-    name: data.name,
-    type: "etf" as const,
-    sector: null as string | null,
-  })),
-  ...Object.entries(STOCK_SECTORS).map(([ticker, sector]) => ({
-    ticker,
-    name: getStockDisplayName(ticker),
-    type: "stock" as const,
-    sector,
-  })),
-]
-
-function getStockDisplayName(ticker: string): string {
-  const names: Record<string, string> = {
-    AAPL: "Apple Inc.", MSFT: "Microsoft Corp.", GOOGL: "Alphabet Inc. (Class A)", GOOG: "Alphabet Inc. (Class C)",
-    AMZN: "Amazon.com Inc.", NVDA: "NVIDIA Corp.", META: "Meta Platforms Inc.", TSLA: "Tesla Inc.",
-    "BRK.B": "Berkshire Hathaway (Class B)", "BRK.A": "Berkshire Hathaway (Class A)",
-    UNH: "UnitedHealth Group", JNJ: "Johnson & Johnson", JPM: "JPMorgan Chase", V: "Visa Inc.",
-    PG: "Procter & Gamble", HD: "Home Depot", MA: "Mastercard", XOM: "Exxon Mobil",
-    CVX: "Chevron Corp.", LLY: "Eli Lilly", ABBV: "AbbVie Inc.", MRK: "Merck & Co.",
-    PFE: "Pfizer Inc.", KO: "Coca-Cola Co.", PEP: "PepsiCo Inc.", AVGO: "Broadcom Inc.",
-    COST: "Costco Wholesale", TMO: "Thermo Fisher Scientific", WMT: "Walmart Inc.",
-    CSCO: "Cisco Systems", CRM: "Salesforce Inc.", ABT: "Abbott Laboratories",
-    ACN: "Accenture plc", MCD: "McDonald's Corp.", NFLX: "Netflix Inc.", AMD: "Advanced Micro Devices",
-    INTC: "Intel Corp.", ADBE: "Adobe Inc.", DIS: "Walt Disney Co.", NKE: "Nike Inc.",
-    PYPL: "PayPal Holdings", BA: "Boeing Co.", CAT: "Caterpillar Inc.", GE: "General Electric",
-    RTX: "RTX Corp.", UNP: "Union Pacific", HON: "Honeywell", GS: "Goldman Sachs",
-    MS: "Morgan Stanley", BLK: "BlackRock Inc.", C: "Citigroup Inc.", BAC: "Bank of America",
-    WFC: "Wells Fargo", SCHW: "Charles Schwab", NEE: "NextEra Energy", DUK: "Duke Energy",
-    SO: "Southern Company", COP: "ConocoPhillips", SLB: "SLB (Schlumberger)", EOG: "EOG Resources",
-    LIN: "Linde plc", APD: "Air Products", SHW: "Sherwin-Williams", FCX: "Freeport-McMoRan",
-    AMT: "American Tower", PLD: "Prologis Inc.", CCI: "Crown Castle", SPG: "Simon Property Group",
-    T: "AT&T Inc.", VZ: "Verizon Communications", TMUS: "T-Mobile US", CMCSA: "Comcast Corp.",
-    PLTR: "Palantir Technologies", SQ: "Block Inc.", SHOP: "Shopify Inc.", SNOW: "Snowflake Inc.",
-    COIN: "Coinbase Global", SOFI: "SoFi Technologies", UBER: "Uber Technologies",
-    ABNB: "Airbnb Inc.", SPOT: "Spotify Technology", NET: "Cloudflare Inc.",
-    CRWD: "CrowdStrike Holdings", ZS: "Zscaler Inc.", DDOG: "Datadog Inc.",
-    MDB: "MongoDB Inc.", PANW: "Palo Alto Networks", RIVN: "Rivian Automotive",
-    F: "Ford Motor Co.", GM: "General Motors",
-  }
-  return names[ticker] || ticker
-}
+const ALL_TICKERS = getAllTickers()
 
 interface AddHoldingFormProps {
   portfolioId: string | undefined
@@ -67,7 +22,7 @@ interface AddHoldingFormProps {
 export function AddHoldingForm({ portfolioId, userId }: AddHoldingFormProps) {
   const router = useRouter()
   const [searchQuery, setSearchQuery] = useState("")
-  const [selectedTicker, setSelectedTicker] = useState<typeof ALL_TICKERS[number] | null>(null)
+  const [selectedTicker, setSelectedTicker] = useState<(typeof ALL_TICKERS)[number] | null>(null)
   const [quantity, setQuantity] = useState("")
   const [allocation, setAllocation] = useState("")
   const [isLoading, setIsLoading] = useState(false)
@@ -82,8 +37,8 @@ export function AddHoldingForm({ portfolioId, userId }: AddHoldingFormProps) {
     if (!searchQuery.trim()) return ALL_TICKERS.slice(0, 8)
     const q = searchQuery.toUpperCase().trim()
     return ALL_TICKERS.filter(
-      (t) => t.ticker.includes(q) || t.name.toUpperCase().includes(q)
-    ).slice(0, 10)
+      (t) => t.ticker.includes(q) || t.name.toUpperCase().includes(q) || t.exchange.toUpperCase().includes(q),
+    ).slice(0, 12)
   }, [searchQuery])
 
   // Close dropdown on outside click
@@ -97,15 +52,14 @@ export function AddHoldingForm({ portfolioId, userId }: AddHoldingFormProps) {
     return () => document.removeEventListener("mousedown", handleClickOutside)
   }, [])
 
-  const handleSelect = (item: typeof ALL_TICKERS[number]) => {
+  const handleSelect = (item: (typeof ALL_TICKERS)[number]) => {
     setSelectedTicker(item)
     setSearchQuery(item.ticker)
     setShowDropdown(false)
   }
 
-  const etfInfo: ETFSectorBreakdown | null = selectedTicker?.type === "etf"
-    ? ETF_DATA[selectedTicker.ticker] || null
-    : null
+  const etfInfo: ETFSectorBreakdown | null =
+    selectedTicker?.type === "etf" ? ETF_DATA[selectedTicker.ticker] || null : null
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -127,17 +81,15 @@ export function AddHoldingForm({ portfolioId, userId }: AddHoldingFormProps) {
     }
 
     const holdingType = selectedTicker?.type || (isKnownETF(ticker) ? "etf" : "stock")
-    const sector = holdingType === "stock"
-      ? (selectedTicker?.sector || getStockSector(ticker) || null)
-      : null
+    const sector = holdingType === "stock" ? (selectedTicker?.sector || getStockSector(ticker) || null) : null
 
     const supabase = createClient()
     const { error: insertError } = await supabase.from("holdings").insert({
       portfolio_id: portfolioId,
       user_id: userId,
       ticker,
-      quantity: quantity ? parseFloat(quantity) : null,
-      allocation_percent: allocation ? parseFloat(allocation) : null,
+      quantity: quantity ? Number.parseFloat(quantity) : null,
+      allocation_percent: allocation ? Number.parseFloat(allocation) : null,
       sector,
       holding_type: holdingType,
     })
@@ -165,6 +117,12 @@ export function AddHoldingForm({ portfolioId, userId }: AddHoldingFormProps) {
         .slice(0, 5)
     : []
 
+  const getExchangeBadge = (exchange: string) => {
+    if (exchange === "TSX") return "bg-red-500/10 text-red-400 border-red-500/20"
+    if (exchange === "NASDAQ") return "bg-blue-500/10 text-blue-400 border-blue-500/20"
+    return "bg-muted text-muted-foreground"
+  }
+
   return (
     <Card className="transition-all duration-300 hover:shadow-md hover:shadow-primary/5 group">
       <CardHeader>
@@ -183,7 +141,7 @@ export function AddHoldingForm({ portfolioId, userId }: AddHoldingFormProps) {
               <Input
                 ref={inputRef}
                 id="ticker-search"
-                placeholder="Search AAPL, SPY, QQQ..."
+                placeholder="Search AAPL, SPY, RY.TO, XIU.TO..."
                 value={searchQuery}
                 onChange={(e) => {
                   setSearchQuery(e.target.value)
@@ -200,7 +158,7 @@ export function AddHoldingForm({ portfolioId, userId }: AddHoldingFormProps) {
 
             {/* Dropdown results */}
             {showDropdown && filtered.length > 0 && (
-              <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-card border border-border rounded-lg shadow-lg max-h-64 overflow-y-auto">
+              <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-card border border-border rounded-lg shadow-lg max-h-72 overflow-y-auto">
                 {filtered.map((item) => (
                   <button
                     key={item.ticker}
@@ -208,27 +166,33 @@ export function AddHoldingForm({ portfolioId, userId }: AddHoldingFormProps) {
                     onClick={() => handleSelect(item)}
                     className="w-full flex items-center gap-3 px-3 py-2.5 text-left hover:bg-muted/50 transition-colors first:rounded-t-lg last:rounded-b-lg"
                   >
-                    <div className={`h-8 w-8 rounded-md flex items-center justify-center text-xs font-bold flex-shrink-0 ${
-                      item.type === "etf"
-                        ? "bg-primary/15 text-primary"
-                        : "bg-muted text-foreground"
-                    }`}>
-                      {item.type === "etf" ? <TrendingUp className="h-4 w-4" /> : <Building2 className="h-4 w-4" />}
+                    <div
+                      className={`h-8 w-8 rounded-md flex items-center justify-center text-xs font-bold flex-shrink-0 ${
+                        item.type === "etf" ? "bg-primary/15 text-primary" : "bg-muted text-foreground"
+                      }`}
+                    >
+                      {item.type === "etf" ? (
+                        <TrendingUp className="h-4 w-4" />
+                      ) : (
+                        <Building2 className="h-4 w-4" />
+                      )}
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
                         <span className="font-semibold text-sm text-foreground">{item.ticker}</span>
-                        <Badge variant="outline" className={`text-xs px-1 py-0 h-4 ${
-                          item.type === "etf" ? "border-primary/30 text-primary" : ""
-                        }`}>
+                        <Badge
+                          variant="outline"
+                          className={`text-xs px-1 py-0 h-4 ${item.type === "etf" ? "border-primary/30 text-primary" : ""}`}
+                        >
                           {item.type === "etf" ? "ETF" : "Stock"}
+                        </Badge>
+                        <Badge variant="outline" className={`text-xs px-1 py-0 h-4 ${getExchangeBadge(item.exchange)}`}>
+                          {item.exchange}
                         </Badge>
                       </div>
                       <p className="text-xs text-muted-foreground truncate">{item.name}</p>
                     </div>
-                    {item.sector && (
-                      <span className="text-xs text-muted-foreground flex-shrink-0">{item.sector}</span>
-                    )}
+                    {item.sector && <span className="text-xs text-muted-foreground flex-shrink-0">{item.sector}</span>}
                   </button>
                 ))}
               </div>
@@ -241,6 +205,11 @@ export function AddHoldingForm({ portfolioId, userId }: AddHoldingFormProps) {
               <div className="flex items-center gap-2">
                 <TrendingUp className="h-4 w-4 text-primary" />
                 <span className="text-sm font-medium text-foreground">{etfInfo.name}</span>
+                {etfInfo.exchange && (
+                  <Badge variant="outline" className={`text-xs px-1 py-0 h-4 ${getExchangeBadge(etfInfo.exchange)}`}>
+                    {etfInfo.exchange}
+                  </Badge>
+                )}
               </div>
               <p className="text-xs text-muted-foreground">{etfInfo.description}</p>
               <div className="space-y-1.5 pt-1">
@@ -275,7 +244,12 @@ export function AddHoldingForm({ portfolioId, userId }: AddHoldingFormProps) {
             <div className="p-3 rounded-lg bg-muted/30 border border-border/60 flex items-center gap-2 animate-in fade-in slide-in-from-top-2 duration-200">
               <Building2 className="h-4 w-4 text-muted-foreground" />
               <span className="text-sm text-foreground">{selectedTicker.name}</span>
-              <Badge variant="outline" className="text-xs ml-auto">{selectedTicker.sector}</Badge>
+              <Badge variant="outline" className={`text-xs ${getExchangeBadge(selectedTicker.exchange)}`}>
+                {selectedTicker.exchange}
+              </Badge>
+              <Badge variant="outline" className="text-xs ml-auto">
+                {selectedTicker.sector}
+              </Badge>
             </div>
           )}
 

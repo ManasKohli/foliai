@@ -24,17 +24,17 @@ interface NewsArticle {
 
 // Keywords to detect which sectors a news article relates to
 const SECTOR_KEYWORDS: Record<string, string[]> = {
-  Technology: ["tech", "ai", "artificial intelligence", "software", "chip", "semiconductor", "nvidia", "apple", "microsoft", "google", "meta", "cloud", "saas", "cyber"],
-  Financials: ["bank", "jpmorgan", "goldman", "financial", "lending", "credit", "interest rate", "fed", "treasury", "yield"],
-  Healthcare: ["health", "pharma", "drug", "biotech", "fda", "hospital", "medical", "eli lilly", "novo nordisk", "obesity"],
-  Energy: ["oil", "gas", "energy", "opec", "crude", "petroleum", "renewable", "solar", "exxon", "chevron"],
-  "Consumer Discretionary": ["retail", "consumer", "amazon", "tesla", "spending", "e-commerce"],
-  "Consumer Staples": ["grocery", "food", "beverage", "walmart", "costco", "procter"],
-  Industrials: ["manufacturing", "industrial", "boeing", "defense", "infrastructure", "transportation"],
-  "Real Estate": ["real estate", "housing", "mortgage", "reit", "property"],
-  Materials: ["mining", "metals", "gold", "copper", "steel", "chemical"],
-  Utilities: ["utility", "electric", "power grid", "natural gas"],
-  Communication: ["media", "streaming", "telecom", "advertising", "social media"],
+  Technology: ["tech", "ai", "artificial intelligence", "software", "chip", "semiconductor", "nvidia", "apple", "microsoft", "google", "meta", "cloud", "saas", "cyber", "shopify", "constellation software"],
+  Financials: ["bank", "jpmorgan", "goldman", "financial", "lending", "credit", "interest rate", "fed", "treasury", "yield", "royal bank", "td bank", "bmo", "scotiabank", "cibc", "manulife", "brookfield", "bank of canada"],
+  Healthcare: ["health", "pharma", "drug", "biotech", "fda", "hospital", "medical", "eli lilly", "novo nordisk", "obesity", "cannabis", "canopy"],
+  Energy: ["oil", "gas", "energy", "opec", "crude", "petroleum", "renewable", "solar", "exxon", "chevron", "suncor", "enbridge", "tc energy", "canadian natural", "pipeline", "oilsands", "oil sands"],
+  "Consumer Discretionary": ["retail", "consumer", "amazon", "tesla", "spending", "e-commerce", "dollarama", "canada goose", "restaurant brands"],
+  "Consumer Staples": ["grocery", "food", "beverage", "walmart", "costco", "procter", "loblaw", "couche-tard", "saputo", "metro inc"],
+  Industrials: ["manufacturing", "industrial", "boeing", "defense", "infrastructure", "transportation", "canadian national", "cp rail", "air canada", "cae"],
+  "Real Estate": ["real estate", "housing", "mortgage", "reit", "property", "canadian housing", "condo"],
+  Materials: ["mining", "metals", "gold", "copper", "steel", "chemical", "barrick", "nutrien", "potash", "franco-nevada", "agnico"],
+  Utilities: ["utility", "electric", "power grid", "natural gas", "fortis", "hydro one", "emera"],
+  Communication: ["media", "streaming", "telecom", "advertising", "social media", "telus", "bce", "rogers", "bell"],
 }
 
 function detectSectors(text: string): string[] {
