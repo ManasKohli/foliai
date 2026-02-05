@@ -86,11 +86,44 @@ export function MarketNews({ holdings }: { holdings: Holding[] }) {
     fetchNews()
   }, [])
 
+  // Build ticker-to-allocation map
+  const tickerAllocMap = new Map<string, number>()
+  const totalAlloc = holdings.reduce((s, h) => s + (h.allocation_percent || 0), 0)
+  for (const h of holdings) {
+    if (h.allocation_percent && totalAlloc > 0) {
+      tickerAllocMap.set(h.ticker.toUpperCase(), (h.allocation_percent / totalAlloc) * 100)
+      // Also add without .TO suffix for matching
+      if (h.ticker.includes(".")) {
+        tickerAllocMap.set(h.ticker.split(".")[0].toUpperCase(), (h.allocation_percent / totalAlloc) * 100)
+      }
+    }
+  }
+
+  // Detect tickers mentioned in article text
+  function detectMentionedTickers(text: string): { ticker: string; pct: number }[] {
+    const upper = text.toUpperCase()
+    const matched: { ticker: string; pct: number }[] = []
+    for (const [ticker, pct] of tickerAllocMap) {
+      // Match ticker as whole word
+      const regex = new RegExp(`\\b${ticker.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`)
+      if (regex.test(upper)) {
+        matched.push({ ticker, pct })
+      }
+    }
+    return matched
+  }
+
   // For each article, determine relevance to the user's portfolio
-  function getRelevanceTag(article: NewsArticle): { sectors: string[]; isRelevant: boolean } {
-    const detected = detectSectors(`${article.title} ${article.description}`)
-    const isRelevant = detected.some((s) => userSectors.has(s))
-    return { sectors: detected, isRelevant }
+  function getRelevanceTag(article: NewsArticle): {
+    sectors: string[]
+    isRelevant: boolean
+    mentionedTickers: { ticker: string; pct: number }[]
+  } {
+    const text = `${article.title} ${article.description}`
+    const detected = detectSectors(text)
+    const mentionedTickers = detectMentionedTickers(text)
+    const isRelevant = detected.some((s) => userSectors.has(s)) || mentionedTickers.length > 0
+    return { sectors: detected, isRelevant, mentionedTickers }
   }
 
   if (holdings.length === 0) {
@@ -146,7 +179,7 @@ export function MarketNews({ holdings }: { holdings: Holding[] }) {
           </div>
         ) : (
           articles.slice(0, 6).map((article, index) => {
-            const { sectors, isRelevant } = getRelevanceTag(article)
+            const { sectors, isRelevant, mentionedTickers } = getRelevanceTag(article)
             return (
               <a
                 key={index}
@@ -187,9 +220,13 @@ export function MarketNews({ holdings }: { holdings: Holding[] }) {
                       {sector}
                     </Badge>
                   ))}
-                  {isRelevant && (
+                  {mentionedTickers.length > 0 ? (
+                    <span className="text-xs text-primary font-medium">
+                      Relevant: {mentionedTickers.map((t) => `${t.ticker} (${t.pct.toFixed(0)}%)`).join(", ")}
+                    </span>
+                  ) : isRelevant ? (
                     <span className="text-xs text-primary font-medium">Affects your portfolio</span>
-                  )}
+                  ) : null}
                 </div>
               </a>
             )

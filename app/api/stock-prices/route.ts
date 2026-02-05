@@ -41,6 +41,7 @@ async function fetchHistoricalData(tickerList: string[], range: string) {
     "3M": { range: "3mo", interval: "1d" },
     "YTD": { range: "ytd", interval: "1wk" },
     "1Y": { range: "1y", interval: "1wk" },
+    "ALL": { range: "max", interval: "1mo" },
   }
 
   const params = rangeMap[range] || rangeMap["1M"]

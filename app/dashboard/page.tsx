@@ -2,10 +2,14 @@ import { createClient } from "@/lib/supabase/server"
 import { PortfolioSummary } from "@/components/portfolio-summary"
 import { PortfolioMovement } from "@/components/portfolio-movement"
 import { PortfolioPerformance } from "@/components/portfolio-performance"
+import { BenchmarkComparison } from "@/components/benchmark-comparison"
 import { MarketNews } from "@/components/market-news"
 import { AIInsightsPanel } from "@/components/ai-insights-panel"
 import { PortfolioChat } from "@/components/portfolio-chat"
 import { PortfolioOverview } from "@/components/portfolio-overview"
+import { PortfolioHealth } from "@/components/portfolio-health"
+import { HistoricalScenarios } from "@/components/historical-scenarios"
+import { AdvancedVisualizations } from "@/components/advanced-visualizations"
 import { HoldingsTable } from "@/components/holdings-table"
 import { AddHoldingForm } from "@/components/add-holding-form"
 import { AnimateOnScroll } from "@/components/animate-on-scroll"
@@ -48,16 +52,21 @@ export default async function DashboardPage() {
         <PortfolioSummary holdings={holdings || []} />
       </AnimateOnScroll>
 
-      {/* Portfolio Performance (1D, 1W, 1M, 3M, YTD, 1Y) */}
+      {/* Portfolio Performance (1D, 1W, 1M, 3M, YTD, 1Y, All) */}
       <AnimateOnScroll animation="fade-up" delay={150}>
         <PortfolioPerformance holdings={holdings || []} />
+      </AnimateOnScroll>
+
+      {/* Benchmark Comparison */}
+      <AnimateOnScroll animation="fade-up" delay={175}>
+        <BenchmarkComparison holdings={holdings || []} />
       </AnimateOnScroll>
 
       {/* Main Grid */}
       <div className="grid lg:grid-cols-3 gap-8">
         {/* Left Column */}
         <div className="lg:col-span-2 space-y-6">
-          {/* Why did my portfolio move? (now with real prices) */}
+          {/* Why did my portfolio move? */}
           <AnimateOnScroll animation="fade-up" delay={200}>
             <PortfolioMovement holdings={holdings || []} />
           </AnimateOnScroll>
@@ -67,12 +76,17 @@ export default async function DashboardPage() {
             <AIInsightsPanel holdings={holdings || []} />
           </AnimateOnScroll>
 
-          {/* Market News */}
+          {/* Market News with Portfolio Relevance */}
           <AnimateOnScroll animation="fade-up" delay={300}>
             <MarketNews holdings={holdings || []} />
           </AnimateOnScroll>
 
-          {/* Charts */}
+          {/* Advanced Visualizations */}
+          <AnimateOnScroll animation="fade-up" delay={325}>
+            <AdvancedVisualizations holdings={holdings || []} />
+          </AnimateOnScroll>
+
+          {/* Portfolio Visualization (pie + bar charts) */}
           <AnimateOnScroll animation="fade-up" delay={350}>
             <div className="pt-2">
               <h2 className="text-lg font-semibold text-foreground mb-4">Portfolio Visualization</h2>
@@ -93,8 +107,18 @@ export default async function DashboardPage() {
             <PortfolioChat holdings={holdings || []} />
           </AnimateOnScroll>
 
-          {/* Add Holding Form (now with TSX support) */}
+          {/* Portfolio Structure & Risk */}
+          <AnimateOnScroll animation="fade-left" delay={250}>
+            <PortfolioHealth holdings={holdings || []} />
+          </AnimateOnScroll>
+
+          {/* Historical Scenario Viewer */}
           <AnimateOnScroll animation="fade-left" delay={300}>
+            <HistoricalScenarios holdings={holdings || []} />
+          </AnimateOnScroll>
+
+          {/* Add Holding Form */}
+          <AnimateOnScroll animation="fade-left" delay={350}>
             <AddHoldingForm portfolioId={portfolioId} userId={user.id} />
           </AnimateOnScroll>
         </div>

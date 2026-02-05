@@ -31,6 +31,7 @@ const TIME_RANGES = [
   { key: "3M", label: "3M" },
   { key: "YTD", label: "YTD" },
   { key: "1Y", label: "1Y" },
+  { key: "ALL", label: "All" },
 ] as const
 
 type TimeRange = (typeof TIME_RANGES)[number]["key"]
@@ -48,6 +49,8 @@ function formatLabel(ts: number, range: TimeRange): string {
     case "YTD":
     case "1Y":
       return d.toLocaleDateString("en-US", { month: "short", day: "numeric" })
+    case "ALL":
+      return d.toLocaleDateString("en-US", { month: "short", year: "2-digit" })
     default:
       return d.toLocaleDateString("en-US", { month: "short", day: "numeric" })
   }
@@ -176,7 +179,7 @@ export function PortfolioPerformance({ holdings }: { holdings: Holding[] }) {
       }
 
       // Downsample if too many points for clean display
-      const maxPoints = selectedRange === "1D" ? 48 : selectedRange === "1W" ? 40 : 30
+      const maxPoints = selectedRange === "1D" ? 48 : selectedRange === "1W" ? 40 : selectedRange === "ALL" ? 60 : 30
       const sampled = points.length > maxPoints
         ? points.filter((_, i) => i % Math.ceil(points.length / maxPoints) === 0 || i === points.length - 1)
         : points
