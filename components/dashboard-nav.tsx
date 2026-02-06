@@ -2,7 +2,7 @@
 
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { PieChart, User, LogOut, CreditCard, Sparkles } from "lucide-react"
+import { PieChart, User, LogOut, CreditCard, Sparkles, BarChart3 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
   DropdownMenu,
@@ -39,6 +39,12 @@ export function DashboardNav({ user }: { user: SupabaseUser }) {
               <Link href="/dashboard">Dashboard</Link>
             </Button>
             <Button variant="ghost" size="sm" asChild className="text-muted-foreground hover:text-foreground">
+              <Link href="/dashboard/markets" className="flex items-center gap-1.5">
+                <BarChart3 className="h-3.5 w-3.5" />
+                Markets
+              </Link>
+            </Button>
+            <Button variant="ghost" size="sm" asChild className="text-muted-foreground hover:text-foreground">
               <Link href="/dashboard/billing">Billing</Link>
             </Button>
             <Button variant="ghost" size="sm" asChild className="text-muted-foreground hover:text-foreground group">
@@ -66,6 +72,12 @@ export function DashboardNav({ user }: { user: SupabaseUser }) {
               <Link href="/dashboard" className="flex items-center gap-2">
                 <PieChart className="h-4 w-4" />
                 Dashboard
+              </Link>
+            </DropdownMenuItem>
+            <DropdownMenuItem asChild>
+              <Link href="/dashboard/markets" className="flex items-center gap-2">
+                <BarChart3 className="h-4 w-4" />
+                Market Analysis
               </Link>
             </DropdownMenuItem>
             <DropdownMenuItem asChild>
