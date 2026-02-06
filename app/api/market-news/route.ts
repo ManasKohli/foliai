@@ -14,7 +14,7 @@ export async function GET() {
     const [yahooResult, alphaResult] = await Promise.allSettled([
       // Yahoo Finance RSS (free, no key)
       fetch("https://feeds.finance.yahoo.com/rss/2.0/headline?s=^GSPC,^DJI,^IXIC&region=US&lang=en-US", {
-        headers: { "User-Agent": "Mozilla/5.0" },
+        headers: { "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36" },
         next: { revalidate: 600 },
       }),
       // Alpha Vantage news (free tier, 25 requests/day)

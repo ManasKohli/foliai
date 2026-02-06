@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server"
 
-const UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+const UA =
+  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
 
-// Yahoo Finance search endpoint — returns matching tickers from all global exchanges
+// Yahoo Finance search -- v1/finance/search (works reliably)
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url)
   const q = searchParams.get("q")
@@ -24,20 +25,22 @@ export async function GET(request: Request) {
     const quotes = data?.quotes || []
 
     const results = quotes
-      .filter((q: Record<string, string>) =>
-        q.quoteType === "EQUITY" || q.quoteType === "ETF" || q.quoteType === "INDEX"
+      .filter(
+        (item: Record<string, string>) =>
+          item.quoteType === "EQUITY" ||
+          item.quoteType === "ETF" ||
+          item.quoteType === "INDEX"
       )
-      .map((q: Record<string, string>) => ({
-        ticker: q.symbol,
-        name: q.shortname || q.longname || q.symbol,
-        type: q.quoteType === "ETF" ? "etf" : "stock",
-        exchange: mapExchange(q.exchange, q.symbol),
+      .map((item: Record<string, string>) => ({
+        ticker: item.symbol,
+        name: item.shortname || item.longname || item.symbol,
+        type: item.quoteType === "ETF" ? "etf" : "stock",
+        exchange: mapExchange(item.exchange, item.symbol),
         sector: null as string | null,
       }))
 
     return NextResponse.json({ results })
   } catch {
-    // Fallback: return empty — the client has a local list as well
     return NextResponse.json({ results: [] })
   }
 }

@@ -1,10 +1,10 @@
 import { NextResponse } from "next/server"
 
-const UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+const UA =
+  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
 
 // GET /api/etf-profile?ticker=VFV.TO
-// Returns sector breakdown + top holdings from Yahoo Finance for any ETF
-// Tries v10/quoteSummary first, falls back to v7/quote for basic fund info
+// Tries v10 quoteSummary for sector data, falls back to v8 chart for basics
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url)
   const ticker = searchParams.get("ticker")?.trim().toUpperCase()
@@ -13,95 +13,87 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Missing ticker param" }, { status: 400 })
   }
 
-  // Try v10 quoteSummary first (has sector breakdown + top holdings)
-  const v10Result = await fetchV10Profile(ticker)
-  if (v10Result) return NextResponse.json(v10Result)
+  // Try v10 first for rich fund data (sectors + top holdings)
+  const v10 = await fetchV10(ticker)
+  if (v10) return NextResponse.json(v10)
 
-  // Fall back to v7 quote for basic fund info (no sector data)
-  const v7Result = await fetchV7FundInfo(ticker)
-  if (v7Result) return NextResponse.json(v7Result)
+  // Fall back to v8 chart meta for basic fund info
+  const v8 = await fetchV8FundBasics(ticker)
+  if (v8) return NextResponse.json(v8)
 
   return NextResponse.json({ error: "Failed to fetch ETF data" }, { status: 502 })
 }
 
-async function fetchV10Profile(ticker: string) {
+async function fetchV10(ticker: string) {
   try {
     const url = `https://query1.finance.yahoo.com/v10/finance/quoteSummary/${encodeURIComponent(ticker)}?modules=topHoldings,fundProfile,price,summaryDetail,defaultKeyStatistics`
     const res = await fetch(url, {
       headers: { "User-Agent": UA },
       next: { revalidate: 3600 },
     })
-
     if (!res.ok) return null
 
     const data = await res.json()
-    const result = data?.quoteSummary?.result?.[0]
-    if (!result) return null
+    const r = data?.quoteSummary?.result?.[0]
+    if (!r) return null
 
-    const topHoldings = result.topHoldings || {}
-    const fundProfile = result.fundProfile || {}
-    const price = result.price || {}
-    const summaryDetail = result.summaryDetail || {}
-    const keyStats = result.defaultKeyStatistics || {}
+    const topHoldings = r.topHoldings || {}
+    const fundProfile = r.fundProfile || {}
+    const price = r.price || {}
+    const sd = r.summaryDetail || {}
+    const ks = r.defaultKeyStatistics || {}
 
-    // Sector weights
     const sectorWeightings = topHoldings.sectorWeightings || []
     const sectors: Record<string, number> = {}
     for (const sectorObj of sectorWeightings) {
       for (const [key, val] of Object.entries(sectorObj)) {
         const pct = (val as { raw?: number })?.raw
         if (pct != null && pct > 0) {
-          sectors[formatSectorName(key)] = Math.round(pct * 10000) / 100
+          sectors[formatSector(key)] = Math.round(pct * 10000) / 100
         }
       }
     }
 
-    const holdings = (topHoldings.holdings || []).slice(0, 15).map((h: Record<string, unknown>) => ({
-      symbol: (h.symbol as string) || "",
-      name: (h.holdingName as string) || "",
-      percent: (h.holdingPercent as { raw?: number })?.raw
-        ? Math.round(((h.holdingPercent as { raw: number }).raw) * 10000) / 100
-        : 0,
-    }))
+    const holdings = (topHoldings.holdings || [])
+      .slice(0, 15)
+      .map((h: Record<string, unknown>) => ({
+        symbol: (h.symbol as string) || "",
+        name: (h.holdingName as string) || "",
+        percent: (h.holdingPercent as { raw?: number })?.raw
+          ? Math.round((h.holdingPercent as { raw: number }).raw * 10000) / 100
+          : 0,
+      }))
 
-    const fundInfo = {
-      name: price.shortName || price.longName || ticker,
-      category: fundProfile.categoryName || "",
-      family: fundProfile.family || "",
-      legalType: fundProfile.legalType || "",
-      exchange: price.exchangeName || "",
-      currency: price.currency || "USD",
-      price: price.regularMarketPrice?.raw || 0,
-      change: price.regularMarketChange?.raw || 0,
-      changePercent: price.regularMarketChangePercent?.raw
-        ? price.regularMarketChangePercent.raw * 100
-        : 0,
-      expenseRatio: keyStats.annualReportExpenseRatio?.raw
-        ? keyStats.annualReportExpenseRatio.raw * 100
-        : fundProfile.feesExpensesInvestment?.annualReportExpenseRatio?.raw
-          ? fundProfile.feesExpensesInvestment.annualReportExpenseRatio.raw * 100
+    return {
+      ticker,
+      fund: {
+        name: price.shortName || price.longName || ticker,
+        category: fundProfile.categoryName || "",
+        family: fundProfile.family || "",
+        exchange: price.exchangeName || "",
+        currency: price.currency || "USD",
+        price: price.regularMarketPrice?.raw || 0,
+        change: price.regularMarketChange?.raw || 0,
+        changePercent: price.regularMarketChangePercent?.raw
+          ? price.regularMarketChangePercent.raw * 100
+          : 0,
+        expenseRatio: ks.annualReportExpenseRatio?.raw
+          ? ks.annualReportExpenseRatio.raw * 100
           : null,
-      totalAssets: summaryDetail.totalAssets?.raw || null,
-      yield: summaryDetail.yield?.raw ? summaryDetail.yield.raw * 100 : null,
-      ytdReturn: keyStats.ytdReturn?.raw ? keyStats.ytdReturn.raw * 100 : null,
-      threeYearReturn: keyStats.threeYearAverageReturn?.raw
-        ? keyStats.threeYearAverageReturn.raw * 100
-        : null,
-      fiveYearReturn: keyStats.fiveYearAverageReturn?.raw
-        ? keyStats.fiveYearAverageReturn.raw * 100
-        : null,
-      beta: keyStats.beta3Year?.raw || null,
+        totalAssets: sd.totalAssets?.raw || null,
+        yield: sd.yield?.raw ? sd.yield.raw * 100 : null,
+      },
+      sectors,
+      topHoldings: holdings,
     }
-
-    return { ticker, fund: fundInfo, sectors, topHoldings: holdings }
   } catch {
     return null
   }
 }
 
-async function fetchV7FundInfo(ticker: string) {
+async function fetchV8FundBasics(ticker: string) {
   try {
-    const url = `https://query1.finance.yahoo.com/v7/finance/quote?symbols=${encodeURIComponent(ticker)}`
+    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(ticker)}?range=5d&interval=1d`
     const res = await fetch(url, {
       headers: { "User-Agent": UA },
       next: { revalidate: 300 },
@@ -109,28 +101,26 @@ async function fetchV7FundInfo(ticker: string) {
     if (!res.ok) return null
 
     const data = await res.json()
-    const q = data?.quoteResponse?.result?.[0]
-    if (!q) return null
+    const meta = data?.chart?.result?.[0]?.meta
+    if (!meta) return null
+
+    const price = meta.regularMarketPrice || 0
+    const prevClose = meta.chartPreviousClose || meta.previousClose || price
 
     return {
       ticker,
       fund: {
-        name: q.shortName || q.longName || ticker,
+        name: meta.shortName || meta.longName || ticker,
         category: "",
         family: "",
-        legalType: "",
-        exchange: q.fullExchangeName || "",
-        currency: q.currency || "USD",
-        price: q.regularMarketPrice || 0,
-        change: q.regularMarketChange || 0,
-        changePercent: q.regularMarketChangePercent || 0,
+        exchange: meta.exchangeName || "",
+        currency: meta.currency || "USD",
+        price,
+        change: price - prevClose,
+        changePercent: prevClose > 0 ? ((price - prevClose) / prevClose) * 100 : 0,
         expenseRatio: null,
         totalAssets: null,
-        yield: q.dividendYield ? q.dividendYield * 100 : null,
-        ytdReturn: null,
-        threeYearReturn: null,
-        fiveYearReturn: null,
-        beta: null,
+        yield: null,
       },
       sectors: {} as Record<string, number>,
       topHoldings: [],
@@ -140,7 +130,7 @@ async function fetchV7FundInfo(ticker: string) {
   }
 }
 
-function formatSectorName(key: string): string {
+function formatSector(key: string): string {
   const map: Record<string, string> = {
     realestate: "Real Estate",
     consumer_cyclical: "Consumer Discretionary",
