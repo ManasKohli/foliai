@@ -8,8 +8,7 @@ import { AIInsightsPanel } from "@/components/ai-insights-panel"
 import { PortfolioChat } from "@/components/portfolio-chat"
 import { PortfolioOverview } from "@/components/portfolio-overview"
 import { PortfolioHealth } from "@/components/portfolio-health"
-import { HistoricalScenarios } from "@/components/historical-scenarios"
-import { AdvancedVisualizations } from "@/components/advanced-visualizations"
+import { EarningsCalendar } from "@/components/earnings-calendar"
 import { HoldingsTable } from "@/components/holdings-table"
 import { AddHoldingForm } from "@/components/add-holding-form"
 import { AnimateOnScroll } from "@/components/animate-on-scroll"
@@ -81,12 +80,7 @@ export default async function DashboardPage() {
             <MarketNews holdings={holdings || []} />
           </AnimateOnScroll>
 
-          {/* Advanced Visualizations */}
-          <AnimateOnScroll animation="fade-up" delay={325}>
-            <AdvancedVisualizations holdings={holdings || []} />
-          </AnimateOnScroll>
-
-          {/* Portfolio Visualization (pie + bar charts) */}
+          {/* Portfolio Visualization (pie + bar + ETF look-through with live data) */}
           <AnimateOnScroll animation="fade-up" delay={350}>
             <div className="pt-2">
               <h2 className="text-lg font-semibold text-foreground mb-4">Portfolio Visualization</h2>
@@ -107,14 +101,14 @@ export default async function DashboardPage() {
             <PortfolioChat holdings={holdings || []} />
           </AnimateOnScroll>
 
+          {/* Earnings Calendar */}
+          <AnimateOnScroll animation="fade-left" delay={225}>
+            <EarningsCalendar holdings={holdings || []} />
+          </AnimateOnScroll>
+
           {/* Portfolio Structure & Risk */}
           <AnimateOnScroll animation="fade-left" delay={250}>
             <PortfolioHealth holdings={holdings || []} />
-          </AnimateOnScroll>
-
-          {/* Historical Scenario Viewer */}
-          <AnimateOnScroll animation="fade-left" delay={300}>
-            <HistoricalScenarios holdings={holdings || []} />
           </AnimateOnScroll>
 
           {/* Add Holding Form */}
