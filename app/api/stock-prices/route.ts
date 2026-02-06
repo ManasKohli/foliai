@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server"
 
+const UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+
 interface YahooQuote {
   symbol: string
   regularMarketPrice?: number
@@ -51,7 +53,7 @@ async function fetchHistoricalData(tickerList: string[], range: string) {
     try {
       const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(ticker)}?range=${params.range}&interval=${params.interval}&includePrePost=false`
       const res = await fetch(url, {
-        headers: { "User-Agent": "Mozilla/5.0" },
+        headers: { "User-Agent": UA },
         next: { revalidate: range === "1D" ? 60 : 300 },
       })
       if (!res.ok) return
@@ -124,7 +126,7 @@ async function fetchLiveQuotes(tickerList: string[]) {
         try {
           const chartUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(ticker)}?range=5d&interval=1d`
           const chartRes = await fetch(chartUrl, {
-            headers: { "User-Agent": "Mozilla/5.0" },
+            headers: { "User-Agent": UA },
             next: { revalidate: 60 },
           })
           if (!chartRes.ok) return

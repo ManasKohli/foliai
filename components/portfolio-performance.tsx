@@ -58,7 +58,7 @@ function formatLabel(ts: number, range: TimeRange): string {
 
 export function PortfolioPerformance({ holdings }: { holdings: Holding[] }) {
   const [prices, setPrices] = useState<Record<string, PriceData>>({})
-  const [chartData, setChartData] = useState<{ label: string; value: number }[]>([])
+  const [chartData, setChartData] = useState<{ label: string; value: number; ts: number }[]>([])
   const [loading, setLoading] = useState(true)
   const [chartLoading, setChartLoading] = useState(false)
   const [selectedRange, setSelectedRange] = useState<TimeRange>("1M")
@@ -66,7 +66,7 @@ export function PortfolioPerformance({ holdings }: { holdings: Holding[] }) {
   const tickers = useMemo(() => holdings.map((h) => h.ticker), [holdings])
   const tickerKey = tickers.join(",")
 
-  // Fetch live quotes
+  // Fetch live quotes for current prices/today's summary
   useEffect(() => {
     if (tickers.length === 0) {
       setLoading(false)
@@ -91,7 +91,43 @@ export function PortfolioPerformance({ holdings }: { holdings: Holding[] }) {
     return () => clearInterval(interval)
   }, [tickerKey, tickers.length])
 
-  // Fetch historical chart when range or tickers change
+  const hasQuantities = useMemo(
+    () => holdings.some((h) => h.quantity && h.quantity > 0),
+    [holdings],
+  )
+
+  // Compute real total portfolio value from live prices
+  const liveTotal = useMemo(() => {
+    if (!hasQuantities) return 0
+    let total = 0
+    for (const h of holdings) {
+      const p = prices[h.ticker]
+      if (p && h.quantity) total += p.price * h.quantity
+    }
+    return total
+  }, [holdings, prices, hasQuantities])
+
+  // Compute real daily change from live prices (weighted by allocation or value)
+  const liveDailyChange = useMemo(() => {
+    let weightedSum = 0
+    let totalWeight = 0
+    for (const h of holdings) {
+      const p = prices[h.ticker]
+      if (!p) continue
+      if (hasQuantities && h.quantity) {
+        const val = p.previousClose * h.quantity
+        weightedSum += p.changePercent * val
+        totalWeight += val
+      } else {
+        const w = h.allocation_percent || 100 / holdings.length
+        weightedSum += p.changePercent * w
+        totalWeight += w
+      }
+    }
+    return totalWeight > 0 ? weightedSum / totalWeight : 0
+  }, [holdings, prices, hasQuantities])
+
+  // Fetch historical chart data
   const fetchChart = useCallback(async () => {
     if (tickers.length === 0) {
       setChartData([])
@@ -104,11 +140,7 @@ export function PortfolioPerformance({ holdings }: { holdings: Holding[] }) {
       const data = await res.json()
       const charts: Record<string, { timestamps: number[]; closes: number[] }> = data.charts || {}
 
-      // Build a combined portfolio % return timeline
-      // This way the chart always shows accurate % change regardless of whether
-      // we have share quantities or just allocation %
-
-      // Step 1: Collect all unique timestamps
+      // Collect all timestamps across all holdings
       const allTimestamps = new Set<number>()
       for (const ticker of tickers) {
         const chart = charts[ticker]
@@ -123,62 +155,83 @@ export function PortfolioPerformance({ holdings }: { holdings: Holding[] }) {
         return
       }
 
-      // Step 2: For each holding, compute its weight
-      const totalAlloc = holdings.reduce((s, h) => s + (h.allocation_percent || 0), 0)
-      const hasQuantities = holdings.some((h) => h.quantity && h.quantity > 0)
+      // For each ticker build a lookup: ts -> close (with forward-fill)
+      const tickerLookups = new Map<string, Map<number, number>>()
+      for (const ticker of tickers) {
+        const chart = charts[ticker]
+        if (!chart || chart.timestamps.length === 0) continue
+        const lookup = new Map<number, number>()
+        for (let i = 0; i < chart.timestamps.length; i++) {
+          lookup.set(chart.timestamps[i], chart.closes[i])
+        }
+        tickerLookups.set(ticker, lookup)
+      }
 
-      // Step 3: Build the portfolio value at each timestamp
-      const points: { label: string; value: number }[] = []
+      // Compute weights
+      const totalAlloc = holdings.reduce((s, h) => s + (h.allocation_percent || 0), 0)
+
+      // Build portfolio value at each timestamp
+      const points: { label: string; value: number; ts: number }[] = []
 
       for (const ts of sortedTimestamps) {
         let portfolioValue = 0
-        let validWeight = 0
+        let validHoldings = 0
 
         for (const holding of holdings) {
-          const chart = charts[holding.ticker]
-          if (!chart || chart.timestamps.length === 0) continue
+          const lookup = tickerLookups.get(holding.ticker)
+          if (!lookup) continue
 
-          // Find the closest price at or before this timestamp
+          // Find closest price at or before this timestamp
           let price: number | null = null
+          const chart = charts[holding.ticker]
+          if (!chart) continue
+
+          // Binary search-ish: find last timestamp <= ts
           for (let i = chart.timestamps.length - 1; i >= 0; i--) {
             if (chart.timestamps[i] <= ts) {
               price = chart.closes[i]
               break
             }
           }
-          if (price === null && chart.timestamps[0] <= ts + 86400) {
+          // If no price before, use first available if it's close
+          if (price === null && chart.timestamps[0] <= ts + 86400 * 2) {
             price = chart.closes[0]
           }
           if (price === null) continue
 
           if (hasQuantities && holding.quantity && holding.quantity > 0) {
-            // Use actual dollar values
+            // Real portfolio value: price * shares
             portfolioValue += price * holding.quantity
-            validWeight += 1
+            validHoldings++
           } else {
-            // Use allocation-weighted approach: distribute $10k base proportionally
+            // Use allocation-based weighting: each holding gets its proportional
+            // share of a $10k base. The key is to use shares = (base_value / first_price)
+            // so the portfolio returns are properly weighted
             const weight = totalAlloc > 0
               ? (holding.allocation_percent || 0) / totalAlloc
               : 1 / holdings.length
-            const basePrice = chart.closes[0]
-            if (basePrice > 0) {
-              const shares = (10000 * weight) / basePrice
+            const baseValue = 10000 * weight
+            const firstPrice = chart.closes[0]
+            if (firstPrice > 0) {
+              const shares = baseValue / firstPrice
               portfolioValue += price * shares
-              validWeight += weight
+              validHoldings++
             }
           }
         }
 
-        if (validWeight > 0) {
+        if (validHoldings > 0) {
           points.push({
             label: formatLabel(ts, selectedRange),
             value: Math.round(portfolioValue * 100) / 100,
+            ts,
           })
         }
       }
 
-      // Downsample for clean display
-      const maxPoints = selectedRange === "1D" ? 48 : selectedRange === "1W" ? 40 : selectedRange === "ALL" ? 60 : 30
+      // Downsample
+      const maxPoints =
+        selectedRange === "1D" ? 48 : selectedRange === "1W" ? 40 : selectedRange === "ALL" ? 60 : 30
       const sampled =
         points.length > maxPoints
           ? (() => {
@@ -197,46 +250,13 @@ export function PortfolioPerformance({ holdings }: { holdings: Holding[] }) {
     } finally {
       setChartLoading(false)
     }
-  }, [tickerKey, selectedRange, holdings, tickers])
+  }, [tickerKey, selectedRange, holdings, tickers, hasQuantities])
 
   useEffect(() => {
     fetchChart()
   }, [fetchChart])
 
-  // Portfolio value from live prices
-  const portfolioStats = useMemo(() => {
-    let totalValue = 0
-    let totalPrevValue = 0
-    let holdingsWithPrice = 0
-
-    for (const holding of holdings) {
-      const priceData = prices[holding.ticker]
-      if (priceData && holding.quantity) {
-        totalValue += priceData.price * holding.quantity
-        totalPrevValue += priceData.previousClose * holding.quantity
-        holdingsWithPrice++
-      }
-    }
-
-    const holdingBreakdown = holdings
-      .map((h) => {
-        const p = prices[h.ticker]
-        return {
-          ticker: h.ticker,
-          price: p?.price || 0,
-          change: p?.change || 0,
-          changePercent: p?.changePercent || 0,
-          value: p && h.quantity ? p.price * h.quantity : 0,
-          currency: p?.currency || "USD",
-          hasPrice: !!p,
-        }
-      })
-      .sort((a, b) => Math.abs(b.changePercent) - Math.abs(a.changePercent))
-
-    return { totalValue, totalPrevValue, holdingsWithPrice, holdingBreakdown }
-  }, [holdings, prices])
-
-  // Chart range change: computed from the chart data itself
+  // Chart-derived % change (for the range)
   const chartChange = useMemo(() => {
     if (chartData.length < 2) return { value: 0, percent: 0 }
     const first = chartData[0].value
@@ -246,7 +266,12 @@ export function PortfolioPerformance({ holdings }: { holdings: Holding[] }) {
     return { value: change, percent }
   }, [chartData])
 
-  const isUp = chartChange.percent >= 0
+  // For the 1D range, use the live daily change instead (more accurate)
+  const displayChange = selectedRange === "1D" && Object.keys(prices).length > 0
+    ? { percent: liveDailyChange, value: hasQuantities ? liveTotal * (liveDailyChange / 100) : 0 }
+    : chartChange
+
+  const isUp = displayChange.percent >= 0
   const lineColor = isUp ? "hsl(142, 71%, 45%)" : "hsl(0, 84%, 60%)"
 
   if (holdings.length === 0) {
@@ -281,35 +306,35 @@ export function PortfolioPerformance({ holdings }: { holdings: Holding[] }) {
                 <Loader2 className="h-3 w-3 animate-spin" />
                 <span className="text-xs">Fetching live prices...</span>
               </div>
-            ) : portfolioStats.totalValue > 0 ? (
+            ) : (
               <div className="flex items-center gap-3 mt-1">
-                <span className="text-2xl font-bold text-foreground tabular-nums">
-                  ${portfolioStats.totalValue.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                </span>
-                {chartData.length > 1 && (
+                {hasQuantities && liveTotal > 0 && (
+                  <span className="text-2xl font-bold text-foreground tabular-nums">
+                    ${liveTotal.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </span>
+                )}
+                {(chartData.length > 1 || (selectedRange === "1D" && Object.keys(prices).length > 0)) && (
                   <div className={`flex items-center gap-1 text-sm font-medium ${isUp ? "text-emerald-400" : "text-red-400"}`}>
                     {isUp ? <TrendingUp className="h-3.5 w-3.5" /> : <TrendingDown className="h-3.5 w-3.5" />}
                     <span className="tabular-nums">
-                      {chartChange.percent >= 0 ? "+" : ""}{chartChange.percent.toFixed(2)}%
+                      {displayChange.percent >= 0 ? "+" : ""}{displayChange.percent.toFixed(2)}%
                     </span>
-                    <span className="text-xs text-muted-foreground ml-1">{selectedRange}</span>
+                    {hasQuantities && Math.abs(displayChange.value) > 0.01 && (
+                      <span className="text-xs text-muted-foreground ml-0.5">
+                        ({displayChange.value >= 0 ? "+" : ""}${Math.abs(displayChange.value).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })})
+                      </span>
+                    )}
+                    <Badge variant="outline" className="text-xs px-1.5 py-0 h-4 ml-1 border-border/50 text-muted-foreground">
+                      {selectedRange}
+                    </Badge>
                   </div>
                 )}
+                {!hasQuantities && chartData.length < 2 && !chartLoading && (
+                  <p className="text-xs text-muted-foreground">
+                    Add share quantities for dollar values
+                  </p>
+                )}
               </div>
-            ) : chartData.length > 1 ? (
-              <div className="flex items-center gap-3 mt-1">
-                <div className={`flex items-center gap-1 text-sm font-medium ${isUp ? "text-emerald-400" : "text-red-400"}`}>
-                  {isUp ? <TrendingUp className="h-3.5 w-3.5" /> : <TrendingDown className="h-3.5 w-3.5" />}
-                  <span className="tabular-nums">
-                    {chartChange.percent >= 0 ? "+" : ""}{chartChange.percent.toFixed(2)}%
-                  </span>
-                  <span className="text-xs text-muted-foreground ml-1">{selectedRange}</span>
-                </div>
-              </div>
-            ) : (
-              <p className="text-xs text-muted-foreground mt-1">
-                {chartLoading ? "Loading chart data..." : "Add share quantities for exact portfolio value"}
-              </p>
             )}
           </div>
 
@@ -364,8 +389,14 @@ export function PortfolioPerformance({ holdings }: { holdings: Holding[] }) {
                   tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }}
                   axisLine={false}
                   tickLine={false}
-                  width={60}
-                  tickFormatter={(v: number) => `$${v >= 1000 ? `${(v / 1000).toFixed(1)}k` : v.toFixed(0)}`}
+                  width={65}
+                  tickFormatter={(v: number) => {
+                    if (hasQuantities) {
+                      return v >= 1000 ? `$${(v / 1000).toFixed(1)}k` : `$${v.toFixed(0)}`
+                    }
+                    // For allocation-only mode, show relative values
+                    return `$${v >= 1000 ? `${(v / 1000).toFixed(1)}k` : v.toFixed(0)}`
+                  }}
                   domain={["auto", "auto"]}
                 />
                 <Tooltip
@@ -378,7 +409,7 @@ export function PortfolioPerformance({ holdings }: { holdings: Holding[] }) {
                   }}
                   formatter={(value: number) => [
                     `$${value.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-                    "Portfolio Value",
+                    hasQuantities ? "Portfolio Value" : "Simulated Value",
                   ]}
                   labelStyle={{ color: "hsl(var(--muted-foreground))", fontSize: "11px", marginBottom: "4px" }}
                 />
@@ -412,16 +443,18 @@ export function PortfolioPerformance({ holdings }: { holdings: Holding[] }) {
           </div>
         )}
 
-        {/* Today's Movers */}
-        {portfolioStats.holdingBreakdown.filter((h) => h.hasPrice).length > 0 && (
+        {/* Today's Movers from live data */}
+        {!loading && Object.keys(prices).length > 0 && (
           <div className="space-y-2">
             <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">{"Today's"} Movers</p>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-              {portfolioStats.holdingBreakdown
-                .filter((h) => h.hasPrice)
+              {holdings
+                .filter((h) => prices[h.ticker])
+                .sort((a, b) => Math.abs(prices[b.ticker]?.changePercent || 0) - Math.abs(prices[a.ticker]?.changePercent || 0))
                 .slice(0, 6)
                 .map((h) => {
-                  const hUp = h.changePercent > 0
+                  const p = prices[h.ticker]
+                  const hUp = p.changePercent > 0
                   return (
                     <div
                       key={h.ticker}
@@ -435,15 +468,15 @@ export function PortfolioPerformance({ holdings }: { holdings: Holding[] }) {
                             hUp ? "border-emerald-500/30 text-emerald-400" : "border-red-500/30 text-red-400"
                           }`}
                         >
-                          {hUp ? "+" : ""}{h.changePercent.toFixed(2)}%
+                          {hUp ? "+" : ""}{p.changePercent.toFixed(2)}%
                         </Badge>
                       </div>
                       <div className="flex items-center justify-between">
                         <span className="text-xs text-muted-foreground tabular-nums">
-                          {h.currency === "CAD" ? "C" : ""}${h.price.toFixed(2)}
+                          {p.currency === "CAD" ? "C" : ""}${p.price.toFixed(2)}
                         </span>
                         <span className={`text-xs tabular-nums ${hUp ? "text-emerald-400" : "text-red-400"}`}>
-                          {hUp ? "+" : ""}{h.change.toFixed(2)}
+                          {hUp ? "+" : ""}{p.change.toFixed(2)}
                         </span>
                       </div>
                     </div>

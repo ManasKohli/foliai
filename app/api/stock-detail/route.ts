@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 
 // GET /api/stock-detail?ticker=AAPL
 // Returns detailed quote data + news for a single ticker
+// Uses multiple Yahoo Finance endpoints with fallbacks
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url)
   const ticker = searchParams.get("ticker")?.trim().toUpperCase()
@@ -18,89 +19,106 @@ export async function GET(request: Request) {
   return NextResponse.json({ quote: quoteData, news: newsData })
 }
 
+const UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+
 async function fetchQuoteDetail(ticker: string) {
+  // Strategy: try v7/finance/quote first (richest data that actually works),
+  // then fall back to v8/finance/chart for basics
+  const quoteResult = await fetchFromQuoteAPI(ticker)
+  if (quoteResult) return quoteResult
+  return fetchFromChartAPI(ticker)
+}
+
+async function fetchFromQuoteAPI(ticker: string) {
   try {
-    // Use Yahoo Finance quoteSummary for rich data
-    const url = `https://query1.finance.yahoo.com/v10/finance/quoteSummary/${encodeURIComponent(ticker)}?modules=price,summaryDetail,defaultKeyStatistics,calendarEvents`
+    const url = `https://query1.finance.yahoo.com/v7/finance/quote?symbols=${encodeURIComponent(ticker)}&fields=regularMarketPrice,regularMarketChange,regularMarketChangePercent,regularMarketPreviousClose,regularMarketOpen,regularMarketDayHigh,regularMarketDayLow,regularMarketVolume,averageDailyVolume3Month,marketCap,shortName,longName,currency,fullExchangeName,quoteType,trailingPE,forwardPE,pegRatio,priceToBook,dividendYield,trailingAnnualDividendRate,exDividendDate,payoutRatio,fiftyTwoWeekHigh,fiftyTwoWeekLow,fiftyDayAverage,twoHundredDayAverage,beta,epsTrailingTwelveMonths,epsForward,profitMargins,earningsTimestamp,earningsTimestampStart,earningsTimestampEnd,bookValue,priceToSales`
     const res = await fetch(url, {
-      headers: { "User-Agent": "Mozilla/5.0" },
-      next: { revalidate: 300 },
+      headers: { "User-Agent": UA },
+      next: { revalidate: 120 },
     })
 
-    if (!res.ok) {
-      // Fallback to chart API for basic data
-      return fetchBasicQuote(ticker)
-    }
+    if (!res.ok) return null
 
     const data = await res.json()
-    const result = data?.quoteSummary?.result?.[0]
-    if (!result) return fetchBasicQuote(ticker)
+    const q = data?.quoteResponse?.result?.[0]
+    if (!q || !q.regularMarketPrice) return null
 
-    const price = result.price || {}
-    const summary = result.summaryDetail || {}
-    const keyStats = result.defaultKeyStatistics || {}
-    const calendar = result.calendarEvents || {}
+    // Parse earnings dates from timestamps
+    let earningsDate: string | null = null
+    let earningsDateEnd: string | null = null
+    if (q.earningsTimestampStart) {
+      earningsDate = new Date(q.earningsTimestampStart * 1000).toISOString().split("T")[0]
+    } else if (q.earningsTimestamp) {
+      earningsDate = new Date(q.earningsTimestamp * 1000).toISOString().split("T")[0]
+    }
+    if (q.earningsTimestampEnd) {
+      earningsDateEnd = new Date(q.earningsTimestampEnd * 1000).toISOString().split("T")[0]
+    }
 
     return {
       ticker,
-      name: price.shortName || price.longName || ticker,
-      price: price.regularMarketPrice?.raw || 0,
-      change: price.regularMarketChange?.raw || 0,
-      changePercent: price.regularMarketChangePercent?.raw ? price.regularMarketChangePercent.raw * 100 : 0,
-      previousClose: price.regularMarketPreviousClose?.raw || 0,
-      open: price.regularMarketOpen?.raw || 0,
-      dayHigh: price.regularMarketDayHigh?.raw || 0,
-      dayLow: price.regularMarketDayLow?.raw || 0,
-      volume: price.regularMarketVolume?.raw || 0,
-      avgVolume: summary.averageVolume?.raw || 0,
-      marketCap: price.marketCap?.raw || 0,
-      currency: price.currency || "USD",
-      exchange: price.exchangeName || "",
-      quoteType: price.quoteType || "EQUITY",
+      name: q.shortName || q.longName || ticker,
+      price: q.regularMarketPrice || 0,
+      change: q.regularMarketChange || 0,
+      changePercent: q.regularMarketChangePercent || 0,
+      previousClose: q.regularMarketPreviousClose || 0,
+      open: q.regularMarketOpen || null,
+      dayHigh: q.regularMarketDayHigh || null,
+      dayLow: q.regularMarketDayLow || null,
+      volume: q.regularMarketVolume || null,
+      avgVolume: q.averageDailyVolume3Month || null,
+      marketCap: q.marketCap || null,
+      currency: q.currency || "USD",
+      exchange: q.fullExchangeName || "",
+      quoteType: q.quoteType || "EQUITY",
 
       // Valuation
-      peRatio: summary.trailingPE?.raw || keyStats.trailingPE?.raw || null,
-      forwardPE: summary.forwardPE?.raw || keyStats.forwardPE?.raw || null,
-      pegRatio: keyStats.pegRatio?.raw || null,
-      priceToBook: keyStats.priceToBook?.raw || null,
+      peRatio: q.trailingPE ?? null,
+      forwardPE: q.forwardPE ?? null,
+      pegRatio: q.pegRatio ?? null,
+      priceToBook: q.priceToBook ?? null,
+      priceToSales: q.priceToSales ?? null,
+      bookValue: q.bookValue ?? null,
 
       // Dividends
-      dividendYield: summary.dividendYield?.raw ? summary.dividendYield.raw * 100 : null,
-      dividendRate: summary.dividendRate?.raw || null,
-      exDividendDate: summary.exDividendDate?.fmt || null,
-      payoutRatio: summary.payoutRatio?.raw ? summary.payoutRatio.raw * 100 : null,
+      dividendYield: q.dividendYield ? q.dividendYield * 100 : null,
+      dividendRate: q.trailingAnnualDividendRate ?? null,
+      exDividendDate: q.exDividendDate
+        ? new Date(q.exDividendDate * 1000).toISOString().split("T")[0]
+        : null,
+      payoutRatio: q.payoutRatio ? q.payoutRatio * 100 : null,
 
       // Ranges
-      fiftyTwoWeekHigh: summary.fiftyTwoWeekHigh?.raw || null,
-      fiftyTwoWeekLow: summary.fiftyTwoWeekLow?.raw || null,
-      fiftyDayAverage: summary.fiftyDayAverage?.raw || null,
-      twoHundredDayAverage: summary.twoHundredDayAverage?.raw || null,
+      fiftyTwoWeekHigh: q.fiftyTwoWeekHigh ?? null,
+      fiftyTwoWeekLow: q.fiftyTwoWeekLow ?? null,
+      fiftyDayAverage: q.fiftyDayAverage ?? null,
+      twoHundredDayAverage: q.twoHundredDayAverage ?? null,
 
       // Key stats
-      beta: summary.beta?.raw || keyStats.beta?.raw || null,
-      eps: keyStats.trailingEps?.raw || null,
-      forwardEps: keyStats.forwardEps?.raw || null,
-      profitMargin: keyStats.profitMargins?.raw ? keyStats.profitMargins.raw * 100 : null,
+      beta: q.beta ?? null,
+      eps: q.epsTrailingTwelveMonths ?? null,
+      forwardEps: q.epsForward ?? null,
+      profitMargin: q.profitMargins ? q.profitMargins * 100 : null,
 
       // Earnings
-      earningsDate: calendar.earnings?.earningsDate?.[0]?.fmt || null,
-      earningsDateEnd: calendar.earnings?.earningsDate?.[1]?.fmt || null,
+      earningsDate,
+      earningsDateEnd,
     }
   } catch {
-    return fetchBasicQuote(ticker)
+    return null
   }
 }
 
-async function fetchBasicQuote(ticker: string) {
+async function fetchFromChartAPI(ticker: string) {
   try {
-    const chartUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(ticker)}?range=5d&interval=1d`
-    const chartRes = await fetch(chartUrl, {
-      headers: { "User-Agent": "Mozilla/5.0" },
+    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(ticker)}?range=5d&interval=1d&includePrePost=false`
+    const res = await fetch(url, {
+      headers: { "User-Agent": UA },
       next: { revalidate: 60 },
     })
-    if (!chartRes.ok) return null
-    const chartData = await chartRes.json()
-    const meta = chartData?.chart?.result?.[0]?.meta
+    if (!res.ok) return null
+    const data = await res.json()
+    const meta = data?.chart?.result?.[0]?.meta
     if (!meta) return null
 
     const price = meta.regularMarketPrice || 0
@@ -110,7 +128,7 @@ async function fetchBasicQuote(ticker: string) {
 
     return {
       ticker,
-      name: meta.shortName || ticker,
+      name: meta.shortName || meta.longName || ticker,
       price,
       change,
       changePercent,
@@ -118,6 +136,32 @@ async function fetchBasicQuote(ticker: string) {
       currency: meta.currency || "USD",
       exchange: meta.exchangeName || "",
       quoteType: meta.instrumentType || "EQUITY",
+      open: null,
+      dayHigh: null,
+      dayLow: null,
+      volume: null,
+      avgVolume: null,
+      marketCap: null,
+      peRatio: null,
+      forwardPE: null,
+      pegRatio: null,
+      priceToBook: null,
+      priceToSales: null,
+      bookValue: null,
+      dividendYield: null,
+      dividendRate: null,
+      exDividendDate: null,
+      payoutRatio: null,
+      fiftyTwoWeekHigh: null,
+      fiftyTwoWeekLow: null,
+      fiftyDayAverage: null,
+      twoHundredDayAverage: null,
+      beta: null,
+      eps: null,
+      forwardEps: null,
+      profitMargin: null,
+      earningsDate: null,
+      earningsDateEnd: null,
     }
   } catch {
     return null
@@ -134,10 +178,9 @@ interface NewsArticle {
 
 async function fetchTickerNews(ticker: string): Promise<NewsArticle[]> {
   try {
-    // Yahoo Finance news search
-    const url = `https://query1.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(ticker)}&newsCount=8&quotesCount=0&enableFuzzyQuery=false`
+    const url = `https://query1.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(ticker)}&newsCount=10&quotesCount=0&enableFuzzyQuery=false`
     const res = await fetch(url, {
-      headers: { "User-Agent": "Mozilla/5.0" },
+      headers: { "User-Agent": UA },
       next: { revalidate: 600 },
     })
     if (!res.ok) return []
@@ -145,7 +188,7 @@ async function fetchTickerNews(ticker: string): Promise<NewsArticle[]> {
     const data = await res.json()
     const news = data?.news || []
 
-    return news.slice(0, 8).map((item: Record<string, unknown>) => ({
+    return news.slice(0, 10).map((item: Record<string, unknown>) => ({
       title: item.title || "",
       publisher: item.publisher || "",
       link: item.link || "",

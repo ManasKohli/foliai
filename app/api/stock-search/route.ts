@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server"
 
+const UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+
 // Yahoo Finance search endpoint — returns matching tickers from all global exchanges
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url)
@@ -12,7 +14,7 @@ export async function GET(request: Request) {
   try {
     const url = `https://query1.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(q)}&quotesCount=12&newsCount=0&listsCount=0&enableFuzzyQuery=false`
     const res = await fetch(url, {
-      headers: { "User-Agent": "Mozilla/5.0" },
+      headers: { "User-Agent": UA },
       next: { revalidate: 300 },
     })
 

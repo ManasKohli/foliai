@@ -1,7 +1,10 @@
 import { NextResponse } from "next/server"
 
+const UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+
 // GET /api/etf-profile?ticker=VFV.TO
-// Returns real sector breakdown from Yahoo Finance for any ETF
+// Returns sector breakdown + top holdings from Yahoo Finance for any ETF
+// Tries v10/quoteSummary first, falls back to v7/quote for basic fund info
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url)
   const ticker = searchParams.get("ticker")?.trim().toUpperCase()
@@ -10,23 +13,30 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Missing ticker param" }, { status: 400 })
   }
 
+  // Try v10 quoteSummary first (has sector breakdown + top holdings)
+  const v10Result = await fetchV10Profile(ticker)
+  if (v10Result) return NextResponse.json(v10Result)
+
+  // Fall back to v7 quote for basic fund info (no sector data)
+  const v7Result = await fetchV7FundInfo(ticker)
+  if (v7Result) return NextResponse.json(v7Result)
+
+  return NextResponse.json({ error: "Failed to fetch ETF data" }, { status: 502 })
+}
+
+async function fetchV10Profile(ticker: string) {
   try {
-    // Yahoo Finance quoteSummary with topHoldings and fundProfile modules
     const url = `https://query1.finance.yahoo.com/v10/finance/quoteSummary/${encodeURIComponent(ticker)}?modules=topHoldings,fundProfile,price,summaryDetail,defaultKeyStatistics`
     const res = await fetch(url, {
-      headers: { "User-Agent": "Mozilla/5.0" },
-      next: { revalidate: 3600 }, // cache for 1 hour
+      headers: { "User-Agent": UA },
+      next: { revalidate: 3600 },
     })
 
-    if (!res.ok) {
-      return NextResponse.json({ error: "Failed to fetch ETF data" }, { status: 502 })
-    }
+    if (!res.ok) return null
 
     const data = await res.json()
     const result = data?.quoteSummary?.result?.[0]
-    if (!result) {
-      return NextResponse.json({ error: "No data found" }, { status: 404 })
-    }
+    if (!result) return null
 
     const topHoldings = result.topHoldings || {}
     const fundProfile = result.fundProfile || {}
@@ -34,11 +44,10 @@ export async function GET(request: Request) {
     const summaryDetail = result.summaryDetail || {}
     const keyStats = result.defaultKeyStatistics || {}
 
-    // Sector weights from topHoldings
+    // Sector weights
     const sectorWeightings = topHoldings.sectorWeightings || []
     const sectors: Record<string, number> = {}
     for (const sectorObj of sectorWeightings) {
-      // Each sectorObj is like { "realestate": { raw: 0.02 } }
       for (const [key, val] of Object.entries(sectorObj)) {
         const pct = (val as { raw?: number })?.raw
         if (pct != null && pct > 0) {
@@ -47,7 +56,6 @@ export async function GET(request: Request) {
       }
     }
 
-    // Top holdings
     const holdings = (topHoldings.holdings || []).slice(0, 15).map((h: Record<string, unknown>) => ({
       symbol: (h.symbol as string) || "",
       name: (h.holdingName as string) || "",
@@ -56,7 +64,6 @@ export async function GET(request: Request) {
         : 0,
     }))
 
-    // Fund info
     const fundInfo = {
       name: price.shortName || price.longName || ticker,
       category: fundProfile.categoryName || "",
@@ -86,15 +93,50 @@ export async function GET(request: Request) {
       beta: keyStats.beta3Year?.raw || null,
     }
 
-    return NextResponse.json({
-      ticker,
-      fund: fundInfo,
-      sectors,
-      topHoldings: holdings,
+    return { ticker, fund: fundInfo, sectors, topHoldings: holdings }
+  } catch {
+    return null
+  }
+}
+
+async function fetchV7FundInfo(ticker: string) {
+  try {
+    const url = `https://query1.finance.yahoo.com/v7/finance/quote?symbols=${encodeURIComponent(ticker)}`
+    const res = await fetch(url, {
+      headers: { "User-Agent": UA },
+      next: { revalidate: 300 },
     })
-  } catch (err) {
-    console.error("ETF profile fetch error:", err)
-    return NextResponse.json({ error: "Failed to fetch ETF profile" }, { status: 500 })
+    if (!res.ok) return null
+
+    const data = await res.json()
+    const q = data?.quoteResponse?.result?.[0]
+    if (!q) return null
+
+    return {
+      ticker,
+      fund: {
+        name: q.shortName || q.longName || ticker,
+        category: "",
+        family: "",
+        legalType: "",
+        exchange: q.fullExchangeName || "",
+        currency: q.currency || "USD",
+        price: q.regularMarketPrice || 0,
+        change: q.regularMarketChange || 0,
+        changePercent: q.regularMarketChangePercent || 0,
+        expenseRatio: null,
+        totalAssets: null,
+        yield: q.dividendYield ? q.dividendYield * 100 : null,
+        ytdReturn: null,
+        threeYearReturn: null,
+        fiveYearReturn: null,
+        beta: null,
+      },
+      sectors: {} as Record<string, number>,
+      topHoldings: [],
+    }
+  } catch {
+    return null
   }
 }
 
