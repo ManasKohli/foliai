@@ -1,7 +1,29 @@
 import { NextResponse } from "next/server"
+import { fetchYahooFinance, buildChartPath } from "@/lib/yahoo-finance"
 
-const UA =
-  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+interface YahooChartResult {
+  meta: {
+    regularMarketPrice?: number
+    chartPreviousClose?: number
+    previousClose?: number
+    shortName?: string
+    longName?: string
+    currency?: string
+  }
+  timestamp?: number[]
+  indicators?: {
+    quote?: Array<{
+      close?: (number | null)[]
+    }>
+  }
+}
+
+interface YahooChartResponse {
+  chart?: {
+    result?: YahooChartResult[]
+    error?: { code: string; description: string }
+  }
+}
 
 // GET /api/stock-prices?tickers=AAPL,MSFT — live quotes via v8 chart
 // GET /api/stock-prices?tickers=AAPL,MSFT&history=1M — historical chart data
@@ -40,40 +62,53 @@ const RANGE_MAP: Record<string, { range: string; interval: string }> = {
 async function fetchHistoricalData(tickerList: string[], range: string) {
   const params = RANGE_MAP[range] || RANGE_MAP["1M"]
   const chartResults: Record<string, { timestamps: number[]; closes: number[] }> = {}
+  const errors: string[] = []
 
   await Promise.all(
     tickerList.map(async (ticker) => {
-      try {
-        const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(ticker)}?range=${params.range}&interval=${params.interval}&includePrePost=false`
-        const res = await fetch(url, {
-          headers: { "User-Agent": UA },
-          next: { revalidate: range === "1D" ? 60 : 300 },
-        })
-        if (!res.ok) return
-        const data = await res.json()
-        const result = data?.chart?.result?.[0]
-        if (!result) return
-        const timestamps = result.timestamp || []
-        const closes = result.indicators?.quote?.[0]?.close || []
-        const validTs: number[] = []
-        const validCloses: number[] = []
-        for (let i = 0; i < timestamps.length; i++) {
-          if (closes[i] != null && timestamps[i] != null) {
-            validTs.push(timestamps[i])
-            validCloses.push(closes[i])
-          }
-        }
-        chartResults[ticker] = { timestamps: validTs, closes: validCloses }
-      } catch {
-        // skip
+      const path = buildChartPath(ticker, params.range, params.interval)
+      const { data, error } = await fetchYahooFinance<YahooChartResponse>(path, {
+        revalidate: range === "1D" ? 60 : 300,
+      })
+
+      if (error) {
+        console.error(`[StockPrices] Historical data failed for ${ticker}: ${error}`)
+        errors.push(`${ticker}: ${error}`)
+        return
       }
+
+      const result = data?.chart?.result?.[0]
+      if (!result) {
+        console.warn(`[StockPrices] No historical data returned for ${ticker}`)
+        return
+      }
+
+      const timestamps = result.timestamp || []
+      const closes = result.indicators?.quote?.[0]?.close || []
+      const validTs: number[] = []
+      const validCloses: number[] = []
+
+      for (let i = 0; i < timestamps.length; i++) {
+        const ts = timestamps[i]
+        const close = closes[i]
+        if (close != null && ts != null) {
+          validTs.push(ts)
+          validCloses.push(close)
+        }
+      }
+
+      chartResults[ticker] = { timestamps: validTs, closes: validCloses }
     })
   )
-  return NextResponse.json({ charts: chartResults })
+
+  return NextResponse.json({
+    charts: chartResults,
+    ...(errors.length > 0 && process.env.NODE_ENV === "development"
+      ? { _errors: errors }
+      : {}),
+  })
 }
 
-// Use v8/finance/chart with range=5d to get current price + previous close
-// This endpoint WORKS unlike v7/finance/quote which returns 403
 async function fetchLiveQuotes(tickerList: string[]) {
   const quotes: Record<
     string,
@@ -86,40 +121,48 @@ async function fetchLiveQuotes(tickerList: string[]) {
       currency: string
     }
   > = {}
+  const errors: string[] = []
 
   await Promise.all(
     tickerList.map(async (ticker) => {
-      try {
-        const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(ticker)}?range=2d&interval=1d&includePrePost=false`
-        const res = await fetch(url, {
-          headers: { "User-Agent": UA },
-          next: { revalidate: 60 },
-        })
-        if (!res.ok) return
-        const data = await res.json()
-        const result = data?.chart?.result?.[0]
-        if (!result) return
+      const path = buildChartPath(ticker, "2d", "1d")
+      const { data, error } = await fetchYahooFinance<YahooChartResponse>(path, {
+        revalidate: 60,
+      })
 
-        const meta = result.meta
-        const price = meta?.regularMarketPrice ?? 0
-        const prevClose =
-          meta?.chartPreviousClose ?? meta?.previousClose ?? price
-        const change = price - prevClose
-        const changePercent = prevClose > 0 ? (change / prevClose) * 100 : 0
+      if (error) {
+        console.error(`[StockPrices] Live quote failed for ${ticker}: ${error}`)
+        errors.push(`${ticker}: ${error}`)
+        return
+      }
 
-        quotes[ticker] = {
-          price,
-          change,
-          changePercent,
-          previousClose: prevClose,
-          name: meta?.shortName || meta?.longName || ticker,
-          currency: meta?.currency || "USD",
-        }
-      } catch {
-        // skip
+      const result = data?.chart?.result?.[0]
+      if (!result) {
+        console.warn(`[StockPrices] No quote data returned for ${ticker}`)
+        return
+      }
+
+      const meta = result.meta
+      const price = meta?.regularMarketPrice ?? 0
+      const prevClose = meta?.chartPreviousClose ?? meta?.previousClose ?? price
+      const change = price - prevClose
+      const changePercent = prevClose > 0 ? (change / prevClose) * 100 : 0
+
+      quotes[ticker] = {
+        price,
+        change,
+        changePercent,
+        previousClose: prevClose,
+        name: meta?.shortName || meta?.longName || ticker,
+        currency: meta?.currency || "USD",
       }
     })
   )
 
-  return NextResponse.json({ quotes })
+  return NextResponse.json({
+    quotes,
+    ...(errors.length > 0 && process.env.NODE_ENV === "development"
+      ? { _errors: errors }
+      : {}),
+  })
 }

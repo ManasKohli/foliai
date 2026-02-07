@@ -9,9 +9,6 @@ import {
   ExternalLink,
   Newspaper,
   BarChart3,
-  DollarSign,
-  Activity,
-  Calendar,
 } from "lucide-react"
 import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -38,7 +35,6 @@ const RANGES = [
 
 const TABS = [
   { key: "chart", label: "Chart", icon: BarChart3 },
-  { key: "fundamentals", label: "Fundamentals", icon: DollarSign },
   { key: "news", label: "News", icon: Newspaper },
 ] as const
 
@@ -382,89 +378,6 @@ export function StockDetailModal({ ticker, name, onClose }: StockDetailModalProp
             </div>
           )}
 
-          {/* Fundamentals Tab */}
-          {tab === "fundamentals" && (
-            <div>
-              {detailLoading ? (
-                <div className="h-64 flex items-center justify-center">
-                  <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-                </div>
-              ) : quote ? (
-                <div className="space-y-6">
-                  {/* Valuation */}
-                  <div>
-                    <h3 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
-                      <BarChart3 className="h-4 w-4 text-primary" />
-                      Valuation
-                    </h3>
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                      <StatCard label="P/E Ratio" value={quote.peRatio ? quote.peRatio.toFixed(2) : "N/A"} />
-                      <StatCard label="Forward P/E" value={quote.forwardPE ? quote.forwardPE.toFixed(2) : "N/A"} />
-                      <StatCard label="PEG Ratio" value={quote.pegRatio ? quote.pegRatio.toFixed(2) : "N/A"} />
-                      <StatCard label="Price/Book" value={quote.priceToBook ? quote.priceToBook.toFixed(2) : "N/A"} />
-                    </div>
-                  </div>
-
-                  {/* Dividends */}
-                  <div>
-                    <h3 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
-                      <DollarSign className="h-4 w-4 text-emerald-400" />
-                      Dividends
-                    </h3>
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                      <StatCard label="Dividend Yield" value={quote.dividendYield ? `${quote.dividendYield.toFixed(2)}%` : "N/A"} highlight={!!quote.dividendYield && quote.dividendYield > 0} />
-                      <StatCard label="Annual Dividend" value={quote.dividendRate ? `$${quote.dividendRate.toFixed(2)}` : "N/A"} />
-                      <StatCard label="Payout Ratio" value={quote.payoutRatio ? `${quote.payoutRatio.toFixed(1)}%` : "N/A"} />
-                      <StatCard label="Ex-Dividend Date" value={quote.exDividendDate || "N/A"} />
-                    </div>
-                  </div>
-
-                  {/* Key Statistics */}
-                  <div>
-                    <h3 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
-                      <Activity className="h-4 w-4 text-blue-400" />
-                      Key Statistics
-                    </h3>
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                      <StatCard label="EPS (TTM)" value={quote.eps ? `$${quote.eps.toFixed(2)}` : "N/A"} />
-                      <StatCard label="Forward EPS" value={quote.forwardEps ? `$${quote.forwardEps.toFixed(2)}` : "N/A"} />
-                      <StatCard label="Beta" value={quote.beta ? quote.beta.toFixed(2) : "N/A"} />
-                      <StatCard label="Profit Margin" value={quote.profitMargin ? `${quote.profitMargin.toFixed(1)}%` : "N/A"} />
-                    </div>
-                  </div>
-
-                  {/* Moving Averages */}
-                  <div>
-                    <h3 className="text-sm font-semibold text-foreground mb-3">Moving Averages</h3>
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                      <StatCard label="50-Day Avg" value={quote.fiftyDayAverage ? `$${quote.fiftyDayAverage.toFixed(2)}` : "N/A"} />
-                      <StatCard label="200-Day Avg" value={quote.twoHundredDayAverage ? `$${quote.twoHundredDayAverage.toFixed(2)}` : "N/A"} />
-                      <StatCard label="Avg Volume" value={quote.avgVolume ? formatLargeNumber(quote.avgVolume) : "N/A"} />
-                      <StatCard label="Market Cap" value={quote.marketCap ? formatLargeNumber(quote.marketCap) : "N/A"} />
-                    </div>
-                  </div>
-
-                  {/* Earnings */}
-                  {quote.earningsDate && (
-                    <div className="p-3 rounded-lg bg-primary/5 border border-primary/10">
-                      <div className="flex items-center gap-2">
-                        <Calendar className="h-4 w-4 text-primary" />
-                        <span className="text-sm font-medium text-foreground">Next Earnings</span>
-                        <span className="text-sm text-muted-foreground ml-auto">
-                          {quote.earningsDate}{quote.earningsDateEnd && quote.earningsDateEnd !== quote.earningsDate ? ` - ${quote.earningsDateEnd}` : ""}
-                        </span>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              ) : (
-                <div className="h-64 flex items-center justify-center text-muted-foreground text-sm">
-                  No fundamental data available for this ticker.
-                </div>
-              )}
-            </div>
-          )}
-
           {/* News Tab */}
           {tab === "news" && (
             <div>
@@ -528,17 +441,6 @@ function StatItem({ label, value }: { label: string; value: string }) {
     <div>
       <span className="text-xs text-muted-foreground">{label}</span>
       <p className="text-sm font-semibold text-foreground tabular-nums">{value}</p>
-    </div>
-  )
-}
-
-function StatCard({ label, value, highlight }: { label: string; value: string; highlight?: boolean }) {
-  return (
-    <div className="p-3 rounded-lg bg-muted/30">
-      <span className="text-xs text-muted-foreground">{label}</span>
-      <p className={`text-sm font-semibold tabular-nums mt-0.5 ${highlight ? "text-emerald-400" : "text-foreground"}`}>
-        {value}
-      </p>
     </div>
   )
 }
