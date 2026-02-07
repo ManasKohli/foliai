@@ -1,4 +1,3 @@
-```markdown
 # Folio AI
 
 **Folio AI is an AI-powered portfolio intelligence platform that turns market data into clear decisions.**  
