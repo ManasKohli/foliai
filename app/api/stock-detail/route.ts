@@ -155,7 +155,7 @@ async function fetchQuoteFromChart(ticker: string) {
     baseQuote.volume = quotes.volume?.[lastIdx] ?? null
   }
 
-  // Step 2: Try v10 quoteSummary for fundamentals (might fail with 403)
+  // Step 2: Try v10 quoteSummary for fundamentals (may fail due to Yahoo's crumb requirement)
   const summaryPath = buildQuoteSummaryPath(ticker, [
     "defaultKeyStatistics",
     "financialData",
@@ -163,10 +163,14 @@ async function fetchQuoteFromChart(ticker: string) {
     "calendarEvents",
     "price",
   ])
-  const { data: summaryJson } = await fetchYahooFinance<QuoteSummaryResponse>(
+  const { data: summaryJson, error: summaryError } = await fetchYahooFinance<QuoteSummaryResponse>(
     summaryPath,
-    { revalidate: 300 }
+    { revalidate: 300, requiresCrumb: false }
   )
+
+  if (summaryError) {
+    console.warn(`[StockDetail] v10 quoteSummary failed for ${ticker} (expected due to Yahoo auth): ${summaryError}`)
+  }
 
   if (summaryJson?.quoteSummary?.result?.[0]) {
     const r = summaryJson.quoteSummary.result[0]

@@ -15,10 +15,14 @@ const YAHOO_ENDPOINTS = {
   fallback: "https://query2.finance.yahoo.com",
 }
 
+// Crumb cache for v10 API (expires after 30 minutes)
+let crumbCache: { crumb: string; cookie: string; expires: number } | null = null
+
 interface FetchOptions {
   maxRetries?: number
   retryDelay?: number
   revalidate?: number
+  requiresCrumb?: boolean
 }
 
 interface FetchResult<T> {
@@ -36,6 +40,73 @@ function getRandomUserAgent(): string {
 }
 
 /**
+ * Fetch crumb token from Yahoo Finance for v10 API access
+ */
+async function fetchCrumb(): Promise<{ crumb: string; cookie: string } | null> {
+  // Check cache first
+  if (crumbCache && crumbCache.expires > Date.now()) {
+    return { crumb: crumbCache.crumb, cookie: crumbCache.cookie }
+  }
+
+  try {
+    const ua = getRandomUserAgent()
+    // Fetch Yahoo Finance quote page to extract crumb from HTML
+    const res = await fetch("https://finance.yahoo.com/quote/AAPL", {
+      headers: {
+        "User-Agent": ua,
+        Accept: "text/html,application/xhtml+xml",
+      },
+      redirect: "follow",
+      cache: "no-store",
+    })
+
+    if (!res.ok) {
+      console.error(`[YahooFinance] Failed to fetch quote page: ${res.status}`)
+      return null
+    }
+
+    const html = await res.text()
+
+    // Extract crumb from HTML (it's in a script tag as "CrumbStore":{"crumb":"..."})
+    const crumbMatch = html.match(/"CrumbStore":\{"crumb":"([^"]+)"\}/)
+    if (!crumbMatch || !crumbMatch[1]) {
+      console.error("[YahooFinance] Could not find crumb in HTML")
+      return null
+    }
+
+    const crumb = crumbMatch[1]
+
+    // Extract cookies from response
+    const setCookieHeaders = res.headers.getSetCookie?.() || []
+    let cookies = ""
+    if (setCookieHeaders.length > 0) {
+      cookies = setCookieHeaders
+        .map((cookie) => cookie.split(";")[0])
+        .join("; ")
+    } else {
+      // Fallback for older Node versions
+      const singleCookie = res.headers.get("set-cookie")
+      if (singleCookie) {
+        cookies = singleCookie.split(";")[0]
+      }
+    }
+
+    // Cache for 30 minutes
+    crumbCache = {
+      crumb,
+      cookie: cookies,
+      expires: Date.now() + 30 * 60 * 1000,
+    }
+
+    console.log("[YahooFinance] Successfully fetched crumb token")
+    return { crumb, cookie: cookies }
+  } catch (error) {
+    console.error("[YahooFinance] Failed to fetch crumb:", error)
+    return null
+  }
+}
+
+/**
  * Fetch from Yahoo Finance with retry logic and User-Agent rotation.
  * Automatically falls back to query2 endpoint if query1 fails.
  */
@@ -43,21 +114,44 @@ export async function fetchYahooFinance<T>(
   path: string,
   options: FetchOptions = {}
 ): Promise<FetchResult<T>> {
-  const { maxRetries = 2, retryDelay = 1000, revalidate = 60 } = options
+  const { maxRetries = 2, retryDelay = 1000, revalidate = 60, requiresCrumb = false } = options
   const endpoints = [YAHOO_ENDPOINTS.primary, YAHOO_ENDPOINTS.fallback]
+
+  // Get crumb if needed for v10 API
+  let crumbData: { crumb: string; cookie: string } | null = null
+  if (requiresCrumb) {
+    crumbData = await fetchCrumb()
+    if (!crumbData) {
+      console.error("[YahooFinance] Failed to obtain crumb token")
+      return { data: null, error: "Failed to obtain authentication token", status: 0 }
+    }
+  }
 
   for (const endpoint of endpoints) {
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
       const ua = USER_AGENTS[attempt % USER_AGENTS.length]
-      const url = `${endpoint}${path}`
+      let url = `${endpoint}${path}`
+
+      // Add crumb to URL if required
+      if (crumbData) {
+        const separator = path.includes("?") ? "&" : "?"
+        url += `${separator}crumb=${encodeURIComponent(crumbData.crumb)}`
+      }
 
       try {
+        const headers: Record<string, string> = {
+          "User-Agent": ua,
+          Accept: "application/json",
+          "Accept-Language": "en-US,en;q=0.9",
+        }
+
+        // Add cookie if we have crumb
+        if (crumbData) {
+          headers.Cookie = crumbData.cookie
+        }
+
         const res = await fetch(url, {
-          headers: {
-            "User-Agent": ua,
-            Accept: "application/json",
-            "Accept-Language": "en-US,en;q=0.9",
-          },
+          headers,
           next: { revalidate },
         })
 

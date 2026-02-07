@@ -83,6 +83,7 @@ async function fetchV10(ticker: string) {
   ])
   const { data, error } = await fetchYahooFinance<V10Response>(path, {
     revalidate: 3600,
+    requiresCrumb: false, // Disabled due to Yahoo auth issues
   })
 
   if (error) {

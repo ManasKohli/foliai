@@ -45,6 +45,10 @@
   * {
     @apply border-border;
   }
+  html {
+    scroll-behavior: smooth;
+    scroll-padding-top: 80px; /* Account for sticky header */
+  }
   body {
     @apply bg-background text-foreground antialiased;
   }

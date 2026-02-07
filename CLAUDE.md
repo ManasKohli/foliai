@@ -88,6 +88,7 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=
 SUPABASE_SERVICE_ROLE_KEY=
 STRIPE_SECRET_KEY=
 XAI_API_KEY=
+FINNHUB_API_KEY=  # For earnings calendar (free at finnhub.io)
 ```
 
 ## Development
@@ -103,6 +104,9 @@ npm run dev
 1. Check `/api/health/yahoo` for API status
 2. Look at server console for `[YahooFinance]` errors
 3. Yahoo may be rate-limiting - wait and retry
+
+### Earnings calendar requires Finnhub API key
+The earnings calendar uses Finnhub API (free tier available at finnhub.io). Add your API key to `.env` as `FINNHUB_API_KEY`.
 
 ### Supabase errors
 Ensure `NEXT_PUBLIC_SUPABASE_URL` is set (note the `NEXT_PUBLIC_` prefix).

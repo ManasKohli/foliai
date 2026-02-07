@@ -47,34 +47,38 @@ export function EarningsCalendar({ holdings }: { holdings: Holding[] }) {
       const results: EarningsInfo[] = []
       const noData: string[] = []
 
-      // Fetch all stock details in parallel using the stock-detail API
-      // which now uses the working v7/finance/quote endpoint
+      // Fetch earnings and price data in parallel
       const settled = await Promise.allSettled(
         stockTickers.map(async (ticker) => {
-          const res = await fetch(`/api/stock-detail?ticker=${encodeURIComponent(ticker)}`)
-          if (!res.ok) return { ticker, quote: null }
-          const data = await res.json()
-          return { ticker, quote: data.quote }
+          const [earningsRes, priceRes] = await Promise.all([
+            fetch(`/api/earnings?ticker=${encodeURIComponent(ticker)}`),
+            fetch(`/api/stock-prices?tickers=${encodeURIComponent(ticker)}`),
+          ])
+
+          const earningsData = earningsRes.ok ? await earningsRes.json() : null
+          const priceData = priceRes.ok ? await priceRes.json() : null
+
+          return {
+            ticker,
+            earningsDate: earningsData?.earningsDate || null,
+            eps: earningsData?.eps || null,
+            quote: priceData?.quotes?.[ticker] || null,
+          }
         }),
       )
 
       for (const result of settled) {
         if (result.status === "rejected") continue
-        const { ticker, quote } = result.value
-        if (!quote) {
-          noData.push(ticker)
-          continue
-        }
+        const { ticker, earningsDate, eps, quote } = result.value
 
-        if (quote.earningsDate) {
+        if (earningsDate) {
           results.push({
             ticker,
-            name: quote.name || ticker,
-            earningsDate: quote.earningsDate,
-            earningsDateEnd: quote.earningsDateEnd || undefined,
-            eps: quote.eps,
-            changePercent: quote.changePercent,
-            price: quote.price,
+            name: quote?.name || ticker,
+            earningsDate,
+            eps: eps,
+            changePercent: quote?.changePercent,
+            price: quote?.price,
           })
         } else {
           noData.push(ticker)
